@@ -1,39 +1,33 @@
 module.exports = {
-	teamName: "Team Blog Starter", // TeamName을 기입합니다.
+	teamName: "Team NDD Blog", // TeamName을 기입합니다.
 	// TeamBlog에 대한 간단한 설명을 기입합니다.
-	teamDescription: "Team Blog Starter 입니다. 여러분의 방문을 환영합니다.",
+	teamDescription: "Team NDD Blog 입니다. 여러분의 방문을 환영합니다☺️",
 	githubLink: "https://github.com/adultlee/team-blog-starter/tree/main", // Team에서 함께 관리하는 Github Link를 작성합니다.
 	members: [
-		// Team의 Member 들에 대한 상세 정보를 기입합니다.
 		{
-			name: "seoungin",
-			description: "내가 사랑하고, 나를 사랑하는 모두의 안녕을 기원합니다!",
+			name: "adultlee",
+			description: "안녕하세요! 팀 NDD의 바지사장을 맡고 있습니다!",
 			githubLink: "https://github.com/adultlee",
 		},
 		{
-			name: "Adultlee",
-			description: "Adultlee는 개발을 담당합니다!",
-			githubLink: "https://github.com/adultlee",
+			name: "Yoon-Hae-Min",
+			description: "프론트엔드 개발자 윤해민입니다.",
+			githubLink: "https://github.com/Yoon-Hae-Min",
 		},
 		{
-			name: "member1",
-			description: "",
-			githubLink: "https://github.com/adultlee",
+			name: "milk717",
+			description: "I'm 김수민",
+			githubLink: "https://github.com/milk717",
 		},
 		{
-			name: "member2",
-			description: "",
-			githubLink: "https://github.com/adultlee",
+			name: "JangAJang",
+			description: "I'm 이장희",
+			githubLink: "https://github.com/JangAJang",
 		},
 		{
-			name: "member3",
-			description: "",
-			githubLink: "https://github.com/adultlee",
+			name: "quiet-honey",
+			description: "I'm 조용헌",
+			githubLink: "https://github.com/quiet-honey",
 		},
-		// { // 추가적인 인원에 대한 정보를 작성합니다.
-		//   name: 'member1',
-		//   description: 'member1에 대한 한줄 소개',
-		//   githubLink: 'https://github.com/adultlee',
-		// },
 	],
 };
