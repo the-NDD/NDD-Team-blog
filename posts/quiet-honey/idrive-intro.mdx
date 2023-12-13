@@ -1,0 +1,91 @@
+---
+title: 곰터뷰와 IDrive e2 (1) - 왜 IDrive e2를 사용하게 되었나?
+description: 곰터뷰 서비스에서 IDrive e2를 사용하게 된 이유에 대한 글입니다.
+author: quiet-honey
+publishedAt: 2023-11-18
+---
+
+> [원본 글 보러가기](https://lildev.tistory.com/178)
+
+# 곰터뷰
+
+우선 곰터뷰가 어떤 서비스인지 간단한 설명이 필요할 것 같다.
+곰터뷰는 시중에 존재하는 면접 서비스와는 다르게 `무료`로 `로그인 없이` 사용할 수 있는 면접 연습 서비스이다!
+![곰터뷰 랜딩](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2FryLam%2FbtsAxG67ycU%2Fg9mFLAXH31zQ7FsKAjKc6k%2Fimg.png)
+
+### [곰터뷰 사이트 바로가기](https://www.gomterview.com/)
+
+로그인 없이 사용할 수 있는 면접 연습 서비스이지만! 서비스에 가입하는 회원에게 돌아가는 혜택도 있어야하지 않는가? 그렇기에 **회원에게 촬영한 동영상을 서버에 저장하고 이를 필요할 때마다 다시 볼 수 있는 기능**을 제공하고자 했다.
+이를 위해 프로젝트 개발 전에 동영상을 어디에 저장하여 서비스할 것인지 결정하는 것이 우선적인 해결 과제였다.
+
+# 시행 착오
+
+### 초기 계획
+
+직장인도 아니고, 그렇다고 금수저도 아닌 우리에게 가장 중요한 것은 온라인 스토리지 사용 시의 지출하게 될 금액이었다! 그래서 먼저 동영상을 저장하기 위해 온라인 스토리지를 사용할 때의 비용을 알아봐야 할 필요가 있었다.
+
+- **AWS S3**  
+  우선 가장 대중적이며 안정적인 스토리지 서비스인 AWS S3를 사용하였을 시의 가격을 확인해보았다.
+  실제로 서비스를 출시하면 얼마나 많은 데이터를 사용할지 확실히 모르지만, 대략적으로 720p의 3분의 영상을 기준으로 계산을 진행하였다.
+  720p의 3분 영상은 ChatGPT 기준으로 55MB라고 하고 이를 압축하여 대략 40MB 정도로 하나의 영상을 저장하고, 전송한다고 가정하고 AWS Pricing Calculator를 사용해 확인해보았다.
+
+  ### [AWS S3 Pricing Calculator](https://calculator.aws/#/addService/S3)
+
+  ![실제 계산 이미지](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2FbMUpyk%2FbtsAyNq5Qry%2FYq0kXGCG4asKtazQSjyC41%2Fimg.png)
+  영구적으로 1 TB / 40 MB = 1,048,576 MB / 40 MB ≈ 26,214 개의 영상을 저장해두고, 매달 대략 3TB 정도의 데이터가 반환 및 스캔된다고 하면 대략 매달 사용료가 무려 **39.82 USD(53738.26 KRW)**라고 한다.
+  위 계산에서 사용한 추정 사용값이 정확하지 않을 수도 있고, 테스트 시 잘못된 사용, EC2 사용 비용 등 추가적인 비용이 더 있을 수도 있다고 생각한다면 이는 추후에 서비스가 더 확장되었을 시에 감당하기에 너무 벅찬 금액이 될 수도 있다고 판단이 되었고, 그래서 다른 방법을 찾아보게 되었다.
+
+- **구글 드라이브**  
+   “저장소 비용이 너무 많이 든다면, 클라이언트 개인이 영상을 저장하게 하면 되지 않을까?”라는 생각에서 시작하게 된 아이디어였다. 실제로 다른 서비스들에서도 구글 드라이브를 온라인 스토리지처럼 사용한다고 한다.
+  그래서 사용자가 자신의 면접 촬영 영상을 자신의 구글 드라이브에 업로드하고, 각자 업로드한 영상을 다시 보고, 공유도 할 수 있게 구글 드라이브 API를 사용하는 방향으로 결정을 했었다.
+
+  ### [Google Drive API 공식 문서](https://developers.google.com/drive/api/reference/rest/v3?hl=ko)
+
+  하지만 다른 서비스에서 많이 사용하더라도, 가격적인 부분에서 부담이 된다면 AWS S3와 동일한 이유로 사용하지 못할 것이었다. 알아본 구글 드라이브 비용은 다음과 같았다.  
+   | |결제 계정 당 호출 1백만 요청 시 비용|  
+   |---|---|  
+   |0~200만 회|$0.00(건당 0원)|  
+   |200만~10억 회|$3.00(건당 0.0036원)|  
+   |10억 회 이상|$1.50(건당 0.0018원)|  
+   월 200만 회까지는 무료 사용이 가능한 상황이기에 가격적인 부분에서 전혀 부담이 되지 않아 구글 드라이브를 사용하는 것으로 결정하게 되었다.
+
+- **문제 발생**  
+   그렇게 구글 드라이브 API 사용을 위해 학습을 진행하던 중 또 다른 문제가 발생하게 되었다.  
+   구글 드라이브 API를 서비스에 적용하게 되면 서비스 배포 단계에서 구글에 관련 서류 및 증빙 자료를 제출해야만 했다.
+  ![구글 드라이브 인증 필요 이미지](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2FVD9p2%2FbtsAvtmUAR9%2FuAueGlrD6WiRz34bkUMJCk%2Fimg.png)
+  위와 같은 이유들로 로컬 환경에서의 활용은 어렵지 않으나, 배포 직후 인증을 진행한다면 아래의 문제들이 발생하게 될 것으로 예상되었다.
+
+  1. 인증 절차가 굉장히 느림
+  2. 사업자 등록증과 같은 서류가 있어야 함
+
+  만약에 인증이 되지 않았을 때 비디오와 관련되어 구현해둔 서비스 로직을 모두 다른 스토리지 서비스에 맞춰 재작성해야하는 문제가 발생하기에 구글 드라이브를 대체할 또 다른 서비스를 찾아봐야만 했다.
+
+  ### [The Best AWS S3 Alternatives](https://www.bestbackupreviews.com/guides/the-best-aws-s3-alternatives/)
+
+  CloudFlare R2, Wasabi, BackBlaze 등 많은 S3 대체 서비스들이 존재했고, 그 중 IDrive e2를 사용하기로 결정하였다.
+
+# 그래서 왜 IDrive e2인가?
+
+클라우드 분야를 잘 알고 계시는 같은 팀원의 친구분께 조언을 구했더니 아래 서비스를 적극 추천을 하셨다.
+
+### [ S3 Compatible Cloud Object Storage IDrive e2](https://www.idrive.com/object-storage-e2/)
+
+위에서도 말했듯이 곰터뷰에서 사용할 온라인 스토리지를 결정하는 가장 중요한 요소는 가격이었기에 공식 사이트에서 사용비를 확인해보았다.
+![IDrive e2 비용](https://blog.kakaocdn.net/dn/uHzFx/btsAvi6D4PT/ugUZPktAUCd7QJ4EE9dsIK/img.png)  
+다른 서비스 대비 압도적으로 저렴한 가격.. 1년에 2만원도 안된다! 현존최강 가성비라고 볼 수 있다...
+이 서비스에 대한 안정성도 확인하고 싶어 관련 글들을 찾아보니 외국 개발자들로부터의 평가도 괜찮았다.
+
+### [IDrive e2 Review](https://www.bestbackupreviews.com/reviews/idrive-e2-review/)
+
+### [IDrive e2 Review on Reddit](https://www.reddit.com/r/rclone/comments/13m09uj/best_s3compatible_service/)
+
+이러한 이유들로 곰터뷰에서는 해당 서비스를 사용하여 비디오를 저장하는 것으로 결정을 하였다.
+
+# 그래서 AWS S3와의 호환성의 문제는 없는가?
+
+기술적으로 가장 걱정했던 부분이었다. 애초에 한국에서 잘 알려져 있는 서비스도 아닐 것이기에 이를 사용하는 방법을 찾기가 어려울 것이며 IDrive e2 자체에서 제공하는 공식 문서도 빠져있는 부분이 많고 설명이 부실했기에 이를 사용하는 것에 큰 어려움을 겪을까봐 걱정이 되었다.  
+하지만 결론적으로 말하면 전혀 문제가 없다. 애초에 IDrive e2 뿐만 아니라 Naver Cloud Object Storage 등의 S3 대체 서비스들은 AWS S3 API와 완전 호환이 가능하다. 그렇기에 IDrive e2의 공식 문서가 부실하고 참고할 관련 자료가 부족하더라도, 아래 AWS S3의 공식 문서를 참고하면 필요한 기능들을 구현할 수가 있었다!
+
+### [AWS SDK for JavaScript](https://docs.aws.amazon.com/ko_kr/sdk-for-javascript/v2/developer-guide/welcome.html)
+
+다음 포스트에서는 AWS SDK for JavaScript와 IDrive e2를 사용하여 어떤 방식으로 곰터뷰에서 비디오를 저장하고 관리하는지 알아보겠다.
