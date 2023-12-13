@@ -1,0 +1,439 @@
+---
+title: scroll event 최적화로 웹페이지 성능 개선하기
+description: Rscroll event 최적화로 웹페이지 성능 개선하기
+author: adultlee
+publishedAt: 2023-12-01
+---
+
+> [원본](https://velog.io/@adultlee/series/NDD)
+
+> ## 저희팀 NDD는 [곰터뷰](https://www.gomterview.com/) 서비스를 개발중입니다!
+
+곰터뷰 서비스의 pre-alpha test를 진행하기 위해 , 다음과 같이 네이버 부스트캠프 8기 분들께 설문을 요청 드렸습니다.
+
+![](https://velog.velcdn.com/images/adultlee/post/a7b80713-7413-4ab2-a16c-3f95e51807e8/image.png)
+
+> 혹시나 들어가보실까 싶어서 링크를 추가로 남기겠습니다!
+> [Gomterview 배포 사이트] > https://www.gomterview.com/ (혹은 구글에서 "곰터뷰"를 검색해주세요!)
+> [Gomterview 설문] > https://forms.gle/FjLDygaGBZm8tnbP6 > [Demo 영상] > https://youtu.be/LtpJC6bO-2c
+
+![](https://velog.velcdn.com/images/adultlee/post/366d9c43-7797-4f79-8212-82d944ab7481/image.png)
+설문결과는 다음과 같았는데, 다른 답변들도 많았지만! 가장 피드백을 받았던 기능은 다른 유저의 질문리스트를 공유하고 사용하는 기능이었습니다!
+
+![](https://velog.velcdn.com/images/adultlee/post/e545901f-dcfd-4afb-bf7b-acbea144ed8c/image.png)
+그에 따라 그 주차에 바로 면접 묶음 리스트 (면접 set라 명명했습니다.) 를 공유할 수 있는 페이지에 대한 기획이 진행되었습니다.
+
+> ~~토스 개발자의 100퍼 취업 보장이라니... 너무 궁금한걸...?~~
+
+해당 페이지의 Side Menu는 화면이 스크롤되면서 유저의 view 내부에서 이동 해야하는 컴포넌트였습니다.
+
+### fixed를 써서 고정할까?
+
+fixed를 사용하게 되면 편하게 컴포넌트를 유저의 view내부에 고정 시킬 수 있습니다. 하지만 화면이 굉장히 넓은 (듀얼모니터를 사용하는 유저의 경우, 메인 모니터급 약 30인치 이상) 화면 에서의 대응이 부드럽지 못합니다. 저는 면접 묶음리스트를 렌더링 하는 컴포넌트를 기준으로 이동시키기 위해, absolute 속성을 사용해 부모 컴포넌트를 relative로 두고 위치 시켰습니다.
+
+여기서 사소한 문제가 발생했습니다. 해당 컴포넌트(여기선 부모인 면접 묶음 리스트 레이아웃 컴포넌트)를 기준으로 고정시켜서 상대적인 위치를 적용해야 한다면, left 속성은 유효하나 top 속성은 고정되지 않고, 지속적으로 변경시켜줘야만 한다는 점 이었습니다.
+
+그에 따라 저는 다음과 같이 시도했습니다.
+
+## 일반버전
+
+```js
+import React, { useEffect, useState } from "react";
+import { Box } from "@foundation/index";
+import { css } from "@emotion/react";
+import { HTMLElementTypes } from "@/types/utils";
+
+type CategoryMenuType = HTMLElementTypes<HTMLDivElement>;
+
+const CategoryMenu: React.FC<CategoryMenuType> = ({ children, ...arg }) => {
+	// 스크롤에 따라 변할 top 위치를 상태로 관리
+	const [topPosition, setTopPosition] = useState(200);
+
+	useEffect(() => {
+		const handleScroll = () => {
+			// 여기서 스크롤에 따른 topPosition 계산 로직을 추가
+			// 예: 스크롤 위치에 따라 topPosition 값을 조정
+			const newTopPosition = 200 + window.scrollY;
+			setTopPosition(newTopPosition > 0 ? newTopPosition : 0);
+		};
+
+		// 스크롤 이벤트 리스너 추가
+		window.addEventListener("scroll", handleScroll);
+
+		// 컴포넌트가 언마운트 될 때 이벤트 리스너 제거
+		return () => window.removeEventListener("scroll", handleScroll);
+	}, []);
+
+	return (
+		<Box
+			css={css`
+				position: absolute;
+				top: ${topPosition}px; // 동적으로 계산된 top 위치 사용
+				left: -120px;
+				display: flex;
+				flex-direction: column;
+				justify-content: center;
+				align-items: start;
+				row-gap: 0.75rem;
+				padding: 1.5rem;
+				border: 1px solid blue;
+				width: auto;
+				height: auto;
+			`}
+			{...arg}
+		>
+			{children}
+		</Box>
+	);
+};
+export default CategoryMenu;
+```
+
+### 결과 영상
+
+![](https://velog.velcdn.com/images/adultlee/post/7092e8b9-3e61-410f-9401-8f5e45c3b427/image.gif)
+
+> 중간중간에 끊기는 것을 볼 수 있습니다!
+
+즉 scroll 이벤트를 받아 주기적으로 top 속성을 갱신시켜주는 것이었습니다.
+당연하게도 scroll 이벤트는 **굉장히** 자주 일어나는 이벤트이기 때문에 최적화는 필수적이었습니다. 스크롤과 같이 정해진 주기에 한번 이벤트를 실행시켜야 한다면 throttling 이 적합합니다.
+
+> 대표적인 다른 방식으로는 제가 사용한 [Debounce](https://velog.io/@adultlee/%ED%8F%AD%EC%A3%BD%EC%9D%84-%ED%84%B0%ED%8A%B8%EB%A0%A4%EB%B3%B4%EC%9E%90-%EC%B5%9C%EC%A0%81%ED%99%94%EB%A5%BC-%EA%B3%81%EB%93%A4%EC%97%AC%EC%84%9C) 방식이 있습니다만, 여기선 적합하지 않습니다.
+
+![](https://velog.velcdn.com/images/adultlee/post/f412399b-a073-44c7-808b-e4fa307d358f/image.png)
+
+> 성능 평과 결과 썩 좋지 않음을 확인할 수 있었습니다.
+
+## 쓰로쓸링을 적용
+
+```js
+import React, { useEffect, useState } from "react";
+import { Box } from "@foundation/index";
+import { css } from "@emotion/react";
+import { HTMLElementTypes } from "@/types/utils";
+
+type CategoryMenuType = HTMLElementTypes<HTMLDivElement>;
+
+const CategoryMenu: React.FC<CategoryMenuType> = ({ children, ...arg }) => {
+	const [topPosition, setTopPosition] = useState(200);
+
+	useEffect(() => {
+		let throttleTimeout = null; // 스로틀링 타임아웃을 관리할 변수
+
+		const handleScroll = () => {
+			if (throttleTimeout === null) {
+				throttleTimeout = setTimeout(() => {
+					throttleTimeout = null;
+					const newTopPosition = 200 + window.scrollY;
+					setTopPosition(newTopPosition);
+				}, 100); // 100ms 간격으로 스로틀링
+			}
+		};
+
+		window.addEventListener("scroll", handleScroll);
+
+		return () => {
+			window.removeEventListener("scroll", handleScroll);
+			if (throttleTimeout) {
+				clearTimeout(throttleTimeout);
+			}
+		};
+	}, []);
+
+	return (
+		<Box
+			css={css`
+				position: absolute;
+				top: ${topPosition}px;
+				left: -120px;
+				transition: top 0.3s ease; // 부드러운 전환 효과
+				display: flex;
+				flex-direction: column;
+				justify-content: center;
+				align-items: start;
+				row-gap: 0.75rem;
+				padding: 1.5rem;
+				border: 1px solid blue;
+				width: auto;
+				height: auto;
+			`}
+			{...arg}
+		>
+			{children}
+		</Box>
+	);
+};
+
+export default CategoryMenu;
+```
+
+![](https://velog.velcdn.com/images/adultlee/post/b5675ef6-9588-469e-9fd6-8ee92e7fe7da/image.gif)
+
+> 쓰로쓸링을 적용했지만 여전히 버벅이는것을 확인할 수 있었습니다.
+
+## 중간 결론
+
+웹 개발에서 성능 최적화는 사용자 경험을 향상시키는 중요한 요소입니다. 특히, 스크롤, 리사이즈, 마우스 이동 같은 빈번한 이벤트들은 성능 문제의 주범이 될 수 있습니다. 이러한 문제를 해결하기 위해 '쓰로틀링'이라는 기법을 사용하게 되었습니다. 쓰로틀링을 통해 이벤트 핸들러의 호출 빈도를 제한함으로써 성능을 개선할 수 있습니다. 하지만 쓰로틀링을 도입한 후 서비스의 성능은 개선되었지만 여전히 문제가 있었습니다. 여전히 **화면은 버벅거린다는 점...** 이는 쓰로틀링으로 이벤트 처리 빈도를 제한하더라도, 이벤트 핸들러가 실행되는 시점이 브라우저의 **Repaint 주기**와 맞지 않을 수 있습니다.
+
+> 웹 브라우저는 화면을 주기적으로 갱신하거나 "리페인트(repaint)"하는데, 이 과정은 일반적으로 초당 60번 정도 발생합니다 (즉, 대략 매 16.7 밀리초마다). 이 갱신 주기는 브라우저가 화면에 내용을 그리는 속도를 결정합니다. 이벤트 핸들러가 실행되는 시점이 브라우저의 화면 갱신 주기와 일치하지 않는다는 것은, 이벤트 핸들러가 브라우저가 화면을 갱신하는 타이밍과 맞물려 실행되지 않는다는 뜻입니다. 즉, 이벤트 핸들러의 실행이 브라우저의 화면 갱신 주기와 동기화되지 않으면, 화면에 표시되는 내용이 불규칙하게 갱신될 수 있으며, 이는 사용자에게 버벅이는 듯한 느낌을 줄 수 있습니다. 예를 들어, 스크롤 이벤트 핸들러가 매우 빠르게 여러 번 실행되면 (화면 갱신 주기보다 더 자주), 브라우저는 이 모든 변경사항을 화면에 반영하기 위해 과도한 리페인트를 수행해야 할 수 있습니다. 이로 인해 성능 저하나 애니메이션의 버벅임이 발생할 수 있습니다.
+
+이 문제를 해결하기 위해 **requestAnimationFrame**을 사용하기로 결정했습니다. **requestAnimationFrame은 브라우저의 화면 갱신 주기에 맞추어 함수를 호출하는 방법**으로, 화면이 **새로 그려질 때**(Repaint)마다 함수가 실행됩니다. 이를 통해 스크롤과 같은 애니메이션 효과를 더 부드럽게 처리할 수 있었습니다.
+
+## requestAnimationFrame 적용
+
+```js
+import React, { useEffect, useState } from "react";
+import { Box } from "@foundation/index";
+import { css } from "@emotion/react";
+import { HTMLElementTypes } from "@/types/utils";
+
+type CategoryMenuType = HTMLElementTypes<HTMLDivElement>;
+
+const CategoryMenu: React.FC<CategoryMenuType> = ({ children, ...arg }) => {
+	const [translateY, setTranslateY] = useState(100); // 상태를 translateY로 변경
+
+	useEffect(() => {
+		let lastKnownScrollPosition = 0;
+		let ticking = false;
+
+		const handleScroll = () => {
+			lastKnownScrollPosition = 100 + window.scrollY;
+
+			if (!ticking) {
+				window.requestAnimationFrame(() => {
+					setTranslateY(lastKnownScrollPosition); // translateY를 스크롤 위치에 따라 업데이트
+					ticking = false;
+				});
+
+				ticking = true;
+			}
+		};
+
+		window.addEventListener("scroll", handleScroll);
+
+		return () => {
+			window.removeEventListener("scroll", handleScroll);
+		};
+	}, []);
+
+	return (
+		<Box
+			css={css`
+				position: absolute;
+				transform: translateY(${translateY}px);
+				left: -120px;
+				transition: transform 0.3s linear; // 부드러운 전환 효과
+				display: flex;
+				flex-direction: column;
+				justify-content: center;
+				align-items: start;
+				row-gap: 0.75rem;
+				padding: 1.5rem;
+				border: 1px solid blue;
+				width: auto;
+				height: auto;
+			`}
+			{...arg}
+		>
+			{children}
+		</Box>
+	);
+};
+
+export default CategoryMenu;
+```
+
+![](https://velog.velcdn.com/images/adultlee/post/6c775f87-c9e1-4d85-8d8e-5f27087b5ade/image.gif)
+부드러운 듯한 동작을 보여주지만..! CPU성능을 최소로 낮췄더니 다음과 같이 CPU에 과부화가 걸리는것을 확인할 수 있었습니다.
+![](https://velog.velcdn.com/images/adultlee/post/4b17cdbd-4fd5-4527-a9d2-1d3f6db60c7d/image.png)
+
+# 렌더링 과정에서의 top과 transform
+
+CSS 속성 top과 transform은 시각적인 효과 면에서 유사한 결과를 제공할 수 있지만, 그들이 웹 브라우저에 의해 처리되고 렌더링되는 과정에서는 중요한 차이점이 있습니다. 이 차이점은 주로 렌더링 성능과 관련이 있습니다.
+
+## top
+
+top 속성은 주로 절대 위치나 상대 위치로 지정된 요소의 위치를 제어합니다.
+
+#### 렌더링 과정
+
+top을 변경할 때, 브라우저는 레이아웃 계산을 다시 수행해야 합니다. 이는 해당 요소뿐만 아니라 그 주변의 요소들도 영향을 받을 수 있기 때문입니다. 레이아웃 계산이란 요소의 크기와 위치를 결정하는 과정을 말합니다.
+
+### 성능
+
+top 속성의 변경은 "reflow"를 일으킬 수 있습니다. 즉, 문서의 일부 또는 전체 레이아웃을 다시 계산해야 하는 상황이 발생할 수 있어, 이는 성능 저하를 일으킬 수 있습니다. 특히 많은 요소들이 화면에 있는 경우, 이러한 리플로우는 비용이 많이 들 수 있습니다.
+
+> 제가 과거에 작성한 [브라우저가 그리는 법](https://velog.io/@adultlee/%EB%B8%8C%EB%9D%BC%EC%9A%B0%EC%A0%80%EA%B0%80-%EA%B7%B8%EB%A6%AC%EB%8A%94-%EB%B2%95) 에서 reflow 과정은 렌더링 과정중 3번째인 layout에 속해 있습니다. 즉 cpu의 부하가 훨씬 많이 걸리게 됩니다.
+
+## transform
+
+transform 속성은 요소의 변환을 정의합니다. 여기에는 이동(translate), 회전(rotate), 크기 조정(scale), 기울임(skew) 등 다양한 변환 작업이 포함될 수 있습니다.
+
+### 렌더링 과정
+
+transform은 **레이아웃 계산 과정에 영향을 미치지 않습니다.** 대신, 이는 "compositing" 단계에서 처리됩니다. 컴포지팅은 요소의 위치를 변경하거나 변형하는 과정이지만, 기존 레이아웃에 영향을 주지 않습니다.
+
+> compositing 단계는 렌더링 과정의 마지막 과정입니다. 즉 렌더링 과정에서 CPU의 부하가 거의 작용하지 않습니다.
+
+### 성능
+
+transform의 사용은 **리플로우를 일으키지 않습니다.** 따라서 transform을 사용하는 것이 top과 같은 레이아웃 속성을 변경하는 것보다 **성능상 이점**이 있습니다. 특히 애니메이션과 전환 효과에 있어서 transform은 더 **부드럽고 효율적인 렌더링**을 가능하게 합니다.
+
+![](https://velog.velcdn.com/images/adultlee/post/83ba47b9-9045-4316-8ae7-d0aa03c1a81f/image.png)
+
+> 브라우저 렌더링의 자세한 사항에 대해서는 [해당 글](https://velog.io/@adultlee/%EB%B8%8C%EB%9D%BC%EC%9A%B0%EC%A0%80%EA%B0%80-%EA%B7%B8%EB%A6%AC%EB%8A%94-%EB%B2%95) 을 참고하셔도 좋습니다!
+
+# 그렇다면 모두 적용해보자!
+
+```js
+import { useEffect, useRef, useState } from "react";
+
+const useThrottleScroll = (delay: number, top: number): number => {
+	const [scrollPosition, setScrollPosition] = useState(top);
+	const throttleTimeout = (useRef < NodeJS.Timeout) | (null > null);
+	const requestRef = (useRef < number) | (null > null);
+
+	useEffect(() => {
+		const handleScroll = () => {
+			if (!throttleTimeout.current) {
+				throttleTimeout.current = setTimeout(() => {
+					requestRef.current = requestAnimationFrame(() => {
+						setScrollPosition(top + window.scrollY);
+					});
+					throttleTimeout.current = null;
+				}, delay);
+			}
+		};
+
+		window.addEventListener("scroll", handleScroll);
+
+		return () => {
+			window.removeEventListener("scroll", handleScroll);
+			if (throttleTimeout.current) {
+				clearTimeout(throttleTimeout.current);
+			}
+			if (requestRef.current) {
+				cancelAnimationFrame(requestRef.current);
+			}
+		};
+	}, [delay, top]);
+
+	return scrollPosition; // 해당 훅은 scrollPosition을 반환합니다.
+};
+
+export default useThrottleScroll;
+```
+
+주어진 useThrottleScroll 함수는 React의 커스텀 훅입니다. 이 훅은 스크롤 이벤트를 처리하면서, 지정된 지연시간(delay) 동안 스크롤 이벤트를 "throttle" (즉, 제한)하는 역할을 합니다. 이 코드의 주요 목적은 성능 최적화로, 스크롤 이벤트가 매우 빈번하게 발생하는 것을 방지하고, 대신 지정된 지연 시간이 지난 후에만 스크롤 위치를 업데이트합니다.
+
+1. useState: scrollPosition 상태를 사용하여 현재 스크롤 위치를 추적합니다. 초기값은 top 매개변수로 설정됩니다.
+
+2. useRef: throttleTimeout과 requestRef 두 개의 ref를 사용합니다.
+
+3. throttleTimeout는 지연 시간을 관리하기 위한 setTimeout의 반환값을 저장합니다.
+4. requestRef는 requestAnimationFrame 함수 호출을 위한 ID를 저장합니다.
+5. useEffect 내부의 handleScroll 함수: 스크롤 이벤트가 발생할 때마다 호출됩니다. 이 함수 내에서 throttleTimeout.current가 null일 경우에만 setTimeout를 설정합니다. setTimeout은 지정된 지연시간(delay) 후에 스크롤 위치를 업데이트하는 requestAnimationFrame을 예약합니다.
+6. window.addEventListener: 윈도우에 스크롤 이벤트 리스너를 추가합니다.
+7. return 구문에서는 컴포넌트가 언마운트될 때 이벤트 리스너를 제거하고, setTimeout과 requestAnimationFrame을 취소합니다.
+8. 스크롤 위치 업데이트: setTimeout 내부에 requestAnimationFrame을 사용하여 setScrollPosition을 호출함으로써 스크롤 위치를 업데이트합니다. requestAnimationFrame은 브라우저가 다음 repaint를 할 때 함수를 호출하도록 예약하는데, 이는 스크롤 이벤트 처리의 성능을 크게 개선합니다
+
+9. scrollPosition은 계산된 현재 스크롤 입니다
+
+![](https://velog.velcdn.com/images/adultlee/post/937fa709-8b2c-48bd-b138-5382dce61d1e/image.png)
+해당 hook 은 다음과 같이 아주 쉽게 사용됨을 확인할 수 있습니다.
+
+### 시연 영상
+
+![](https://velog.velcdn.com/images/adultlee/post/ba032db7-53c4-4dae-80ba-83d6c7db39db/image.gif)
+
+### 가볍게 살펴본 성능
+
+![](https://velog.velcdn.com/images/adultlee/post/5e691673-8ea8-4f99-8883-a458e83e6d95/image.png)
+
+언뜻 보기에도 기존의 평가된 결과들보다 성능이 뛰어난것으로 보입니다. 하지만 더욱 정확한 수치가 필요합니다.
+
+## 다시금 정확한 테스트를 위한 제한 조건 설정
+
+### 제한 조건 설정
+
+![](https://velog.velcdn.com/images/adultlee/post/dfc808ce-84ac-458f-8140-18c396c930df/image.png)
+
+개발자 도구의 performance tab의 CPU 성능을 최대한 낮춥니다.
+
+```js
+function infiniteScroll() {
+	const interval = setInterval(() => {
+		// 현재 스크롤 위치에서 아래로 조금씩 이동
+		window.scrollBy(0, 2);
+
+		// 페이지 끝에 도달했는지 확인
+		if (window.scrollY + window.innerHeight >= document.body.scrollHeight) {
+			// 페이지 끝에 도달하면 setInterval을 멈춤
+			clearInterval(interval);
+		}
+	}, 300); // 300ms마다 스크롤 실행
+}
+
+// 함수 실행
+infiniteScroll();
+```
+
+모두 동일한 스크롤 환경을 적용 하도록 코드를 통해서 환경을 통제합니다.
+모두 동일한 시간인 16초가량을 기점으로 진행합니다.
+
+### requestAnimationFrame + top 분석 결과
+
+![](https://velog.velcdn.com/images/adultlee/post/3305a5fd-ae7b-41c8-a653-7fb30763e8e2/image.png)
+
+#### 전체 소요시간 : 16초
+
+#### Scripting : 8.2초
+
+#### Rendering : 3.0초
+
+#### Painting : 1.2초
+
+> 가장 기준이 되는 지표
+
+### requestAnimationFrame + transform 분석 결과
+
+![](https://velog.velcdn.com/images/adultlee/post/9532df86-266a-4c8e-b682-a9a7959079dc/image.png)
+
+#### 전체 소요시간 : 16초
+
+#### Scripting : 8.3초
+
+#### Rendering : 2.6초
+
+#### Painting : 0.6초
+
+> top 대신 transform을 사용해서 rendering 시간과 painting 시간이 감소했습니다.
+> Scripting 시간 : 8.2초 -> 8.3초 (개선되지 않음)
+> Rendering 시간 : 3초 -> 2.6초 (약 13.33% 개선)
+> Painting 시간 : 1.2초 -> 0.6초 (약 50% 개선)
+
+### requestAnimationFrame + Throttling + transform 분석 결과
+
+![](https://velog.velcdn.com/images/adultlee/post/9b94fcd0-1017-46af-9374-a2b76f0be2a1/image.png)
+
+#### 전체 소요시간 : 16초
+
+#### Scripting : 1.5초
+
+#### Rendering : 1.7초
+
+#### Painting : 0.4초
+
+> 전체 로직에 Throttling 과 transform 을 사용한 결과 전체적으로 크게 성능이 개선되었습니다.
+> Scripting 시간 : 8.3초 -> 1.5초 (약 82.93% 개선)
+> Rendering 시간 : 3초 -> 1.5초 (약 50% 개선)
+> Painting 시간 : 1.2초 -> 0.4초 (약 66.66% 개선)
+
+# 결론
+
+과거에 브라우저 렌더링 과정을 학습하면서, 실제로 렌더링 최적화에 대해 궁금했었는데 이번 기회로 성능도 측정해보며, 실제로 성능이 향상되는것을 눈으로 확인하는 과정은 꽤나 흥미로웠습니다.
+
+누군가가 맞다고 하는길에 조금은 의심하는 버릇을 키우려고 합니다.
+조금씩 저만의 근거를 만들어 가는것 같아서 의미 있던 과제였다고 생각합니다.
+
+> 해당 코드를 확인하고 싶으시다면 [PR](https://github.com/boostcampwm2023/web14-gomterview/pull/133/files)에서 확인하실 수 있습니다

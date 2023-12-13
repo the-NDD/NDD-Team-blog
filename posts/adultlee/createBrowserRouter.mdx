@@ -1,0 +1,261 @@
+---
+title: createBrowserRouter를 통한 Router기능 추가
+description: SPA는 "Single Page Application"의 약자로, 웹 서비스의 중요한 아키텍처 패턴 중 하나입니다.
+author: adultlee
+publishedAt: 2023-11-13
+---
+
+> [원본](https://velog.io/@adultlee/series/NDD)
+
+# SPA에서의 Client side routing 이란?
+
+![](https://velog.velcdn.com/images/adultlee/post/ad373868-0042-42dd-a738-4e8e8d9e01f3/image.png)
+
+> [SPA란 무엇인가요? (이미지 출처)](https://medium.com/@egoossaert/what-are-single-page-applications-spa-addeaf6717cc)
+
+SPA는 "Single Page Application"의 약자로, 웹 서비스의 중요한 아키텍처 패턴 중 하나입니다. SPA는 단일 HTML 파일을 로드한 후, 사용자가 애플리케이션 내에서 다양한 화면 또는 뷰로 이동할 때 페이지를 다시 로드하지 않고도 컨텐츠를 변경합니다. 이러한 SPA의 특징은 웹 서비스를 더 빠르고 반응적으로 만들어주며 UX를 향상시킵니다.
+
+Client Side Routing은 SPA와 밀접하게 연관된 개념입니다. SPA에서는 브라우저가 초기에 한 번만 HTML, CSS, 및 JavaScript 파일을 로드하고 이후에는 서버에 페이지를 요청하지 않고 클라이언트 측에서 페이지 간의 전환을 처리합니다. 이때 Client Side Routing이 사용됩니다.
+
+아래는 spa의 특징중 하나인 Client Side Routing에 대한 설명입니다.
+
+#### 서버 요청 없는 페이지 전환
+
+Client Side Routing은 사용자가 웹 애플리케이션 내에서 다른 페이지로 이동할 때 서버에 새로운 페이지를 요청하지 않고도 페이지를 빠르게 로드할 수 있습니다. 이것은 서버와의 통신 부담을 줄이고 사용자에게 빠른 응답 시간을 제공합니다.
+
+#### 새로고침 없는 페이지 이동
+
+전통적인 웹 사이트에서는 사용자가 새로고침 버튼을 누르거나 새로운 링크를 클릭할 때마다 페이지가 다시 로드되며 전체 화면이 갱신됩니다. 그러나 클라이언트 측 라우팅을 사용하면 페이지 이동 시에 새로고침이 발생하지 않고 페이지의 일부만 업데이트됩니다. 이로써 부드러운 UX을 제공하며 화면 깜빡임이나 응답 지연을 최소화합니다.
+
+#### 동적 UI 업데이트
+
+Client Side Routing을 통해 페이지 전환 시에 UI를 동적으로 업데이트할 수 있습니다. 예를 들어, 다른 페이지로 이동할 때 애니메이션 효과를 추가하거나 데이터를 비동기적으로 가져와서 페이지 내용을 업데이트할 수 있습니다. 이로써 사용자에게 보다 인터랙티브하고 동적인 경험을 제공할 수 있습니다.
+
+#### URL 관리
+
+클라이언트 측 라우팅은 URL을 사용하여 현재 페이지 상태를 표시하고 관리합니다. 이것은 브라우저의 뒤로 가기 및 앞으로 가기 버튼을 지원하고, 북마크를 생성하거나 특정 상태로 공유하기 쉽게 만듭니다.
+
+SPA와 클라이언트 측 라우팅은 모두 현대적인 웹 애플리케이션 개발에서 중요한 요소로, 사용자에게 빠르고 부드러운 UX를 제공하는 데 크게 기여합니다. React Router는 SPA의 Client Side Routing을 구현하고 관리하는 데 도움이 됩니다.
+
+# createBrowserRouter란?
+
+createBrowserRouter는 React Router v6에서 새롭게 도입된 API 중 하나로, 라우터 객체를 생성하는 데 사용됩니다. 이 함수는 라우터 구성을 객체 형태로 선언적으로 만들 수 있게 해주며, 이를 BrowserRouter 컴포넌트에 전달하여 라우팅을 설정합니다. createBrowserRouter를 사용하면 route에 대한 상세한 정의와 route에 대한 여러 가지 추가 설정을 할 수 있습니다. 지금까지 사용해오던 Router 컴포넌트와 비교해서 확인해보겠습니다.
+
+```js
+// React Router v6에서의 Route 사용 예
+import { Route, Routes } from "react-router-dom";
+
+function App() {
+	return (
+		<Routes>
+			<Route path="/" element={<HomePage />} />
+			<Route path="about" element={<AboutPage />} />
+			{/* 추가 Route 정의 */}
+		</Routes>
+	);
+}
+
+// React Router v6에서의 createBrowserRouter 사용 예
+import { createBrowserRouter, RouterProvider } from "react-router-dom";
+
+const router = createBrowserRouter([
+	{
+		path: "/",
+		element: <HomePage />,
+		// 여기에 하위 라우트나 로더(loader), 액션(action) 등을 추가할 수 있습니다.
+	},
+	{
+		path: "about",
+		element: <AboutPage />,
+	},
+	// 추가 라우트 정의
+]);
+
+function App() {
+	return <RouterProvider router={router} />;
+}
+```
+
+다음과 같은 방식의 차이를 가지고 있습니다. Route 컴포넌트에서도 비슷한 기능을 수행할 수 있지만, createBrowserRouter를 이용한다면 상세한 코드 작성이 가능합니다.
+
+```js
+{
+    path: "/",
+    element: <Root />,
+    loader: rootLoader,
+    children: [
+      {
+        path: "team",
+        element: <Team />,
+        loader: teamLoader,
+      },
+    ],
+  },
+```
+
+이때 해당 코드에 대한 children을 사용하며, Root페이지 내부 하위 path가 team의 경우 Team 이라는 페이지 컴포넌트를 사용해 rendering이 가능합니다 위의 코드에서 주의 해야하는 부분은 loader입니다.
+
+#### loader
+
+각 경로는 렌더링되기 전에 경로 요소에 데이터를 제공하는 "로더" 기능을 정의할 수 있습니다.
+
+```js
+createBrowserRouter([
+	{
+		path: "/teams/:teamId",
+		loader: ({ params }) => {
+			return fakeGetTeam(params.teamId);
+		},
+	},
+]);
+// 다음과 같이 각 페이지를 load하기 전부터 loader를 통해서 에러, 혹은 데이터 처리를 수행할 수 있습니다.
+```
+
+우리팀(NDD)의 서비스인 곰터뷰는 서비스 특성상 면접에 들어가기 전에 여러 setting을 해야하는 과정을 겸하고 있습니다.(문제를 선정, 카메라 및 마이크 연결, 저장소 선택 등) 따라서 페이지별 route를 이동할때 여러 error처리가 가능해야하는데, 이때 해당 파일에서 명확한 책임 분리가 가능할것이라 생각했습니다.
+
+각 페이지 컴포넌트가 렌더링 된 이후가 아닌, 애초에 router처리를 하면서 막아준다면 좀 더 명확한 책임을 가진다는 생각이었습니다. 이뿐이 아니라 lazy-loading을 통한 코드 스플리팅에도 극히 유리 합니다.
+
+### lazy
+
+> [react-router-dom/lazy](https://reactrouter.com/en/main/route/lazy)
+
+lazy-loader를 통해서 어플리케이션 븐들을 작게 유지하면서 해당 경로의 코드 분활을 지원할 수 있는 여러가지 비동기 기능을 획기적으로 사용할 수 있었다는 점이 매력적이었습니다.
+
+### 종합적인 기능과 예시 (by gpt)
+
+아래는 createBrowserRouter의 종합적인 기능과 예시입니다.
+
+1. 선언적 라우트 구성: createBrowserRouter를 사용하면 JavaScript 객체로 라우트를 선언적으로 정의할 수 있으며, 이를 통해 라우트의 구조와 관련 컴포넌트를 보다 명확하게 구성할 수 있습니다.
+
+2. 데이터 로딩 및 코드 분할 지원: 라우트 객체 내에서 loader 함수를 정의할 수 있어서, 해당 라우트가 활성화될 때 필요한 데이터를 미리 로딩할 수 있습니다. 또한, import()를 사용하여 비동기적으로 컴포넌트를 로드하는 코드 분할도 지원합니다.
+
+3. 내장된 에러 핸들링: createBrowserRouter를 사용하면 라우트 객체에 errorElement를 제공하여 특정 경로에서 오류가 발생했을 때 사용자에게 표시할 컴포넌트를 정의할 수 있습니다.
+
+4. 향상된 성능: 새로운 라우터는 라우트 매칭과 렌더링 최적화를 위해 내부적으로 향상된 알고리즘을 사용하여 성능이 개선되었습니다.
+
+5. 히스토리 API와의 통합: createBrowserRouter는 HTML5 히스토리 API와 긴밀하게 통합되어 있어, 브라우저의 뒤로 가기/앞으로 가기 기능과 완벽하게 호환됩니다.
+
+6. 경로 보호 기능: createBrowserRouter를 사용할 때, loader 함수 내에서 사용자 인증 상태를 확인하고, 필요한 경우 다른 경로로 리다이렉트하는 등의 보안 경로를 쉽게 구현할 수 있습니다.
+
+7. 중첩된 라우트: 중첩된 라우트를 통해 레이아웃 내에 하위 경로들을 정의할 수 있으며, 이를 통해 복잡한 UI 구조를 효과적으로 관리할 수 있습니다.
+
+```js
+import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import React, { lazy, Suspense } from "react";
+import Layout from "./components/Layout";
+import ErrorPage from "./components/ErrorPage";
+import Loading from "./components/Loading";
+import { fetchUserData } from "./utils/auth";
+
+// 사용할 컴포넌트를 lazy로 불러옴으로써 코드 분할 구현
+const HomePage = lazy(() => import("./pages/HomePage"));
+const ProfilePage = lazy(() => import("./pages/ProfilePage"));
+const LoginPage = lazy(() => import("./pages/LoginPage"));
+
+const router = createBrowserRouter([
+	{
+		path: "/",
+		element: <Layout />, // 기본 레이아웃
+		errorElement: <ErrorPage />, // 에러 발생 시 표시될 컴포넌트
+		children: [
+			{
+				index: true,
+				element: (
+					<Suspense fallback={<Loading />}>
+						<HomePage />
+					</Suspense>
+				),
+			},
+			{
+				path: "profile",
+				element: (
+					<Suspense fallback={<Loading />}>
+						<ProfilePage />
+					</Suspense>
+				),
+				loader: async () => {
+					// 사용자 데이터 로딩
+					const userData = await fetchUserData();
+					if (!userData) {
+						throw new Error("User not found");
+					}
+					return userData;
+				},
+			},
+			{
+				path: "login",
+				element: (
+					<Suspense fallback={<Loading />}>
+						<LoginPage />
+					</Suspense>
+				),
+			},
+		],
+	},
+	// 경로 보호를 위한 예시
+	{
+		path: "protected",
+		element: (
+			<Suspense fallback={<Loading />}>
+				<ProtectedPage />
+			</Suspense>
+		),
+		loader: async () => {
+			const user = await fetchUserData();
+			if (!user) {
+				// 사용자가 로그인하지 않았다면 로그인 페이지로 리다이렉트
+				throw new Response(null, { status: 403 });
+			}
+		},
+	},
+]);
+
+function App() {
+	return <RouterProvider router={router} />;
+}
+
+export default App;
+```
+
+# createBrowserRouter 결과
+
+![](https://velog.velcdn.com/images/adultlee/post/508d930d-b295-4d3a-b324-446191b4d998/image.gif)
+
+# 이슈발생 🔥
+
+> 이슈 : react-router-dom의 Link 태그로는 잘 이동하지만 이동한 위치에서 새로 고침을하면 이동이 불가한 문제가 발생
+
+## 이유
+
+이 문제는 Single Page Applications (SPA)의 클라이언트 측 라우팅과 서버 측 라우팅 방식의 차이에서 발생했습니다. **`react-router-dom`** 같은 클라이언트 측 라우팅 라이브러리는 브라우저의 주소 표시줄의 URL을 변경하지만, 실제로 서버에 새로운 요청을 보내지 않습니다. 대신, JavaScript를 사용하여 클라이언트 측에서 동적으로 콘텐츠를 변경합니다.
+
+이와 대조적으로, 서버 측 라우팅은 URL이 변경될 때마다 서버로 새 요청을 보내 페이지를 새로고침합니다. SPA에서는 클라이언트 측 라우팅을 사용하므로, 서버는 어떤 특정 경로에 대한 요청을 처리하는 방법을 몰라서 404 Not Found 에러를 반환할 수 있습니다.
+
+예를 들어, **`http://example.com/user`** 페이지를 보고 있다가 페이지를 새로고침하면, 브라우저는 서버에 **`/user`** 경로에 대한 새 페이지를 요청합니다. SPA를 호스팅하는 서버가 이 경로에 대해 설정되지 않았다면, 서버는 404 에러를 반환할 것입니다. 그 이유는, 클라이언트 측 라우터만이 **`/user`** 경로가 유효하다는 것을 알고 있고, 서버는 아닙니다.
+
+이 문제를 해결하기 위해 **`historyApiFallback`** 설정이 사용됩니다. 이 설정을 활성화하면, Webpack Dev Server는 개발 중에 클라이언트 측 라우트에 대한 404 응답을 **`index.html`**로 리다이렉션합니다. 이는 **`index.html`**이 실제로는 SPA의 진입점이며, 클라이언트 측 JavaScript가 필요한 라우팅을 처리할 수 있게 해줍니다.
+
+따라서, 사용자가 새로고침을 하거나 직접 URL을 입력하여 특정 경로로 접근할 때, **`historyApiFallback`** 설정이 있는 서버는 요청을 **`index.html`**로 리다이렉트하고, 그 후에 **`react-router-dom`**이 URL을 확인하여 적절한 컴포넌트를 렌더링합니다. 이로 인해 클라이언트 측에서 정의한 라우트가 서버 측에서도 문제없이 작동하게 됩니다.
+
+## 해결방법
+
+<img
+	width="424"
+	alt="image"
+	src="https://github.com/boostcampwm2023/Web14-EchoView/assets/77886826/8194516e-2bed-423d-a73a-ed7bae76984c"
+/>
+
+다음 코드와 같이 webpack 설정을 추가해줌으로서 해결했습니다.
+
+# 맺음말
+
+지금까지 프로젝트의 중요한 부분인 createBrowserRouter를 통한 Router처리에 대한 뼈대를 잡았습니다.
+아직은 반영되지 않았으나, setting 페이지를 오가며 발생할 여러 페이지에서의 문제를 createBrowserRouter에서 해결하기를 바랍니다.
+
+해당 개발 내용에 대한 내용은 [PR](https://github.com/boostcampwm2023/web14-gomterview/pull/19)에서 확인할 수 있습니다.
+
+## +) 멘토님의 comment
+
+![](https://velog.velcdn.com/images/adultlee/post/a1652228-bf5d-4339-9bef-f666b15d61f8/image.png)
+
+> [언헤피 케이스에 대한 간단 정리](https://noon-raver-863.notion.site/01c1b733110b4a06a5486c47be6175b3)

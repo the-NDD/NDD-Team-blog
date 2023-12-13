@@ -1,0 +1,213 @@
+---
+title: SVG Sprite 기법을 사용해 나만의 특별한 Icon 컴포넌트 개발
+description: SVG(Scalable Vector Graphics)는 웹에서 벡터 기반의 그래픽을 표현하는 데 사용되는 XML 기반의 마크업 언어입니다.
+author: adultlee
+publishedAt: 2023-11-20
+---
+
+> [원본](https://velog.io/@adultlee/series/NDD)
+
+> ### 저희팀 NDD는 [곰터뷰](https://www.gomterview.com/) 서비스를 개발중입니다!
+
+# 왜 SVG 파일 관리는 불편했을까?
+
+![](https://velog.velcdn.com/images/adultlee/post/3364b66a-7193-481e-9272-fcda19819b9b/image.png)
+
+SVG(Scalable Vector Graphics)는 웹에서 벡터 기반의 그래픽을 표현하는 데 사용되는 XML 기반의 마크업 언어입니다. 그러나 지금까지 여러가지 이유로 SVG 파일을 관리하는것은 저에겐 묘하게 꽤나 **귀찮은** 일이었습니다. 이러한 **귀찮음**을 해결 하기 위해서는 SVG의 기본적인 특성과 FE측면에서 SVG 파일의 기본적인 어려움에 대해서 이해할 필요가 있었습니다.
+
+1.  다수의 파일 관리
+    기존의 SVG 관리 방식에서는 각각의 SVG 이미지가 별도의 파일로 존재했습니다. 웹사이트에 다수의 아이콘 또는 그래픽을 사용하는 경우, 이들 각각을 별도의 파일로 관리해야 했습니다. 이로 인해 파일 수가 많아지고, 이들을 효율적으로 관리하기가 어려웠습니다.
+
+2.  네트워크 오버헤드
+    웹 페이지가 로드될 때마다, 각각의 SVG 파일에 대한 별도의 HTTP 요청이 필요했습니다. 이는 특히 많은 수의 그래픽 요소가 있는 페이지에서 네트워크 오버헤드를 증가시켜 웹사이트의 로딩 시간에 영향을 미쳤습니다.
+
+3.  캐싱의 복잡성
+    각각의 SVG 파일은 독립적으로 캐시되어야 했습니다. 이는 웹사이트의 캐싱 전략을 복잡하게 만들고, 효율적인 캐시 관리를 어렵게 했습니다.
+
+4.  확장성과 유지보수의 문제 (특히나 중요한...)
+    프로젝트가 성장하면서 새로운 그래픽 요소가 추가되거나 기존의 것들이 변경될 때, 이러한 변경 사항을 관리하는 것은 시간이 많이 소요되는 작업이었습니다. 또한, 각각의 파일을 추적하고 관리해야 했기 때문에 유지보수의 부담이 컸습니다.
+
+# 기존의 방식은 어땠지?
+
+저희 프로젝트는 webpack 기반으로 동작을 하고 있었고, 수민님의 [해당커밋](https://github.com/boostcampwm2023/web14-gomterview/pull/27/commits/22c5f1d1a0a160b0ab51748179941adc5c7f47f8)에서 svgr을 추가한덕에 react처럼 손쉽게 import 받아서 svg 를 사용할 수 있었습니다.
+아래와 같은 방식이었습니다.
+![스크린샷 2023-11-15 오후 4 37 59](https://github.com/boostcampwm2023/web14-gomterview/assets/77886826/1dad8ef8-2f6a-47f4-93f0-9117f9b59064)
+다음처럼 상단에서 import 받은 후
+![스크린샷 2023-11-15 오후 4 38 05](https://github.com/boostcampwm2023/web14-gomterview/assets/77886826/e8ef776f-1d6d-48f4-babb-272a1a85ed85)
+
+다음 사진처럼 손쉽게 react 프로젝트에서 사용할 수 있었습니다.
+
+하지만 프로젝트의 규모가 커지면서 이러한 방식은 여러가지 단점을 가지게 되었습니다..
+
+### 1. 많아지는 svg 파일을 관리하기가 어렵다.
+
+![스크린샷 2023-11-15 오후 4 37 42](https://github.com/boostcampwm2023/web14-gomterview/assets/77886826/f9c29f41-1dc1-4ced-be8d-fccf194e0de3)
+프로젝트의 초기 단계임에도 불구하고 assets 내부에 svg가 많이 추가가 되었습니다.
+하지만 이는 프로젝트의 크기를 증가시킬 뿐 아니라 페이지를 방문할때마다 각기다른 svg파일을 load 하게 됩니다.
+
+### 2. 한 파일에서 load해야할 컴포넌트의 증가
+
+![스크린샷 2023-11-15 오후 4 38 19](https://github.com/boostcampwm2023/web14-gomterview/assets/77886826/93ede90d-b229-4a30-9c25-1211336a7659)
+
+다음 사진과 같이 한 파일에서 load 해야할 svg 파일이 증가함에 따라 파일의 상단에서 import 받는 컴포넌트들이 증가하게 되었습니다.
+
+### 3. svg 파일의 정렬문제...
+
+![스크린샷 2023-11-15 오후 5 24 58](https://github.com/boostcampwm2023/web14-gomterview/assets/77886826/f3a27844-6afe-4bf0-b5f8-122d1fe106e6)
+물론 이부분은 prettier 설정을 통해서 해소 할 수 있습니다만, 특별하게 더 규칙을 추가하기보다는 이미 있던 규칙 내부에서 정렬을 사용하고 싶었습니다.
+
+따라서 저희는 더 쉽게 유지보수가 가능한 Icon 컴포넌트를 도입하게 되었습니다.
+
+추가로 요즘 preact 의 개발자로 유명하신 "Jason Miller"님은 다음과 같이 말씀하셨습니다!
+
+![](https://velog.velcdn.com/images/adultlee/post/ecf8af40-e511-4cf5-a623-65686b8a806d/image.png)
+
+> SVG를 JSX로 가져오지 마세요. 이 방법은 스프라이트 시트 중에서 가장 비효율적입니다: 다른 기법들보다 최소 3배 이상의 비용이 들고, 실행 시간(렌더링) 성능과 메모리 사용에도 악영향을 미칩니다.
+> 한 유명한 사이트의 번들에서 SVG 아이콘이 거의 50% (250kb)를 차지하고 있는데, 대부분 사용되지 않고 있습니다."
+> from [Jason Miller X](https://twitter.com/_developit/status/1382838799420514317)
+
+# 어떻게 하면 해결 할 수 있을까?
+
+1. svg 파일을 한 파일에서 다루는 것,
+2. svg 파일을 매번 추가하며 asset 내부에서 늘리지 말것!
+3. svg를 한번에 다룰수 있는 Icon 컴포넌트를 만들 것
+4. Icon 컴포넌트는 기존의 svg들을 모두 사용가능할 것
+
+다음과 같은 목적을 가지고 프로젝트를 진행하게 되었으며,
+가장 눈여겨 본 부분은 SVG 태그의 use 태그를 이용해 SVG Sprite 기법을 활용하는 것 이었습니다.
+
+하지만 SVG Sprite 기법을 사용하기전 MDN에서 제공하는 use와 symbol에 대해서 이해하면 더욱 쉽게 이해하실 수 있습니다! 아래는 해당 MDN 문서에 대한 링크 입니다!
+
+[Mdn svg use 부분](https://developer.mozilla.org/en-US/docs/Web/SVG/Element/use)
+[Mdn svg symbol 부분](https://developer.mozilla.org/en-US/docs/Web/SVG/Element/symbol)
+
+![image](https://github.com/boostcampwm2023/web14-gomterview/assets/77886826/46e90d12-7190-411b-8aac-23957177f692)
+다음 사진을 보면 svg 태그 내우벵서 myCircle이라고 명시한 태그를 use href를 통해서 재사용하며, svg 태그의 일부를 재사용하는것을 확인할 수 있습니다.
+![image](https://github.com/boostcampwm2023/web14-gomterview/assets/77886826/a0853145-016e-4db8-9e02-8af709988999)
+이는 좀 더 멱확하게 circle 뿐아니라 symbol이라 명시한 좀 더 범용적인 목적을 가진 태그를 재사용하며, 하나로 명시한 코드를 재사용하는것을 확인할 수 있습니다.
+
+해당 방식의 특징은 svg 태그 내부의 특정 부분을 재사용하기 위한 방식으로 use를 사용한다는것 이었습니다.
+여기서 아이디어를 얻어 거대한 svg 태그를 사용해 그 내부의 특정 부분(우리가 사용할 icon이 됩니다) 을 재사용 할 수 있게 됩니다.
+
+이 방식을 적극 사용해서 SVG Sprite 기법을 사용할 수 있게 됩니다.
+
+## Svg Sprite 기법이란?
+
+![](https://velog.velcdn.com/images/adultlee/post/d3d74714-9852-430e-bce1-fb3aebac207a/image.png)
+
+> 해당 기술에 대한 구현은 [Simple icon systems using SVG sprites](https://oliverjam.es/articles/svg-sprites) 을 참고했습니다.
+
+SVG 스프라이트 기법은 웹 개발에서 자주 사용되는 고급 그래픽 처리 방식입니다. 이 방법은 큰 SVG 파일 내에 여러 개의 그래픽 요소(예: 아이콘)를 포함시키고, 필요한 부분만을 `<use>` 태그를 통해 재사용하는 기술입니다. 각 그래픽 요소는 고유한 ID로 식별되며, 이 ID를 통해 해당 요소를 페이지의 다양한 위치에서 호출하여 사용할 수 있습니다.
+
+#### SVG 스프라이트의 작동 원리
+
+SVG 스프라이트 기법의 핵심은 하나의 큰 SVG 파일에 다수의 그래픽 요소를 포함시키는 것입니다. 이 파일은 일반적으로 웹 페이지의 본문이 아닌, 별도의 파일로 존재하거나 `<head>` 섹션에 포함됩니다. 각 요소는 `<symbol>` 태그로 정의되어 고유한 ID를 갖습니다. 이러한 구조는 웹 페이지 내에서 필요한 SVG 요소를 선택적으로 재사용할 수 있는 유연성을 제공합니다.
+
+> 하지만 저는 JS 내부에서 해결하고 싶어 **GlobalSvgProvider**를 따로 도입했습니다!
+
+#### 재사용을 위한 `<use>` 태그의 역할
+
+웹 페이지에서 특정 SVG 요소를 사용하려면 `<use>` 태그를 활용합니다. 이 태그는 xlink:href 속성을 통해 스프라이트 내의 특정 `<symbol>`을 참조합니다. 예를 들어, xlink:href="#icon1"은 ID가 "icon1"인 `<symbol>`을 페이지에 불러옵니다. 이 방식을 통해, 하나의 큰 SVG 파일 내에서 필요한 부분만을 선택적으로 렌더링할 수 있게 됩니다.
+
+#### SVG 스프라이트의 이점
+
+- 성능 최적화: 여러 이미지에 대한 개별적인 HTTP 요청을 줄임으로써 페이지 로딩 시간을 단축시킵니다.
+- 유지보수 편의성: 모든 그래픽 요소가 하나의 파일에 있어 관리가 용이합니다.
+- 일관된 스타일링: CSS를 통해 전체 아이콘 세트에 일관된 스타일을 적용할 수 있습니다.
+- 확장성: 새로운 아이콘이나 그래픽 요소를 쉽게 추가할 수 있습니다.
+
+> 당연히 개별적인 이미지를 최초의 로딩에 포함시키기 때문에, 초기 로딩속도가 "상대적" 으로 더 느려질 수 있습니다만, 유의미한 차이가 날 정도로 초기 로딩속도가 느려지지 않습니다.
+
+## 적용 방법
+
+```js
+import { css } from "@emotion/react";
+import { createPortal } from "react-dom";
+
+const spliteSvgCode = (
+	<svg
+		xmlns="http://www.w3.org/2000/svg"
+		css={css`
+			display: none;
+		`}
+	>
+		<symbol id="close-circle" viewBox="0 0 40 40">
+			<path
+				fillRule="evenodd"
+				clipRule="evenodd"
+				d="M20 40C31.0457 40 40 31.0457 40 20C40 8.9543 31.0457 0 20 0C8.9543 0 0 8.9543 0 20C0 31.0457 8.9543 40 20 40ZM13.0808 13.0642C14.2525 11.8928 16.152 11.893 17.3234 13.0647L19.9982 15.74L22.6696 13.0686C23.8412 11.897 25.7407 11.897 26.9122 13.0686C28.0838 14.2402 28.0838 16.1397 26.9122 17.3113L24.2404 19.9831L26.9154 22.6587C28.0869 23.8304 28.0867 25.7299 26.915 26.9013C25.7433 28.0728 23.8438 28.0726 22.6724 26.9009L19.9978 24.2257L17.3282 26.8953C16.1567 28.0668 14.2572 28.0668 13.0856 26.8953C11.914 25.7237 11.914 23.8242 13.0856 22.6526L15.7556 19.9826L13.0804 17.3069C11.9089 16.1352 11.9091 14.2357 13.0808 13.0642Z"
+				fill="white"
+			/>
+		</symbol>
+		<symbol id="close" viewBox="0 0 24 25">
+			<g id="Frame" clipPath="url(#clip0_289_791)">
+				<path
+					id="Vector"
+					d="M23.4772 3.35322C24.1798 2.62789 24.0679 1.55056 23.2223 0.947888C22.3767 0.345222 21.1208 0.441222 20.4182 1.16656L11.9995 9.83322L3.58085 1.16656C2.87826 0.441222 1.62231 0.345222 0.77671 0.947888C-0.0688857 1.55056 -0.180803 2.62789 0.521788 3.35322L9.40676 12.4999L0.521788 21.6466C-0.180803 22.3719 -0.0688857 23.4492 0.77671 24.0519C1.62231 24.6546 2.87826 24.5586 3.58085 23.8332L11.9995 15.1666L20.4182 23.8332C21.1208 24.5586 22.3767 24.6546 23.2223 24.0519C24.0679 23.4492 24.1798 22.3719 23.4772 21.6466L14.5923 12.4999L23.4772 3.35322Z"
+					fill="white"
+				/>
+			</g>
+			<defs>
+				<clipPath id="clip0_289_791">
+					<rect
+						width="24"
+						height="24"
+						fill="white"
+						transform="translate(0 0.5)"
+					/>
+				</clipPath>
+			</defs>
+		</symbol>
+		// 다른 svg를 호출하기 위해 symbol을 사용합니다. 아래에 다른 svg를 동일한
+		방식으로 추가합니다.
+	</svg>
+);
+
+// App 내부에서 선언되어 최초 생성될 dom에 추가됩니다
+export default function GlobalSVGProvider() {
+	return createPortal(spliteSvgCode, document.body);
+}
+```
+
+그리고 위의 방식에서 반환하는 GlobalSvgProvider를 App.tsx에서 사용해주면 됩니다.
+
+![image](https://github.com/boostcampwm2023/web14-gomterview/assets/77886826/b9b6efa2-5aab-4792-8b46-abd4e0be6cb1)
+
+그리고 Icon 컴포넌트는 다음과 같이 사용할 수 있습니다.
+
+```js
+// foundation 내부에서 정의 되어 있습니다.
+const Icon: React.FC<SvgIconProps> = ({
+	id,
+	width = "16",
+	height = "16",
+	...props
+}) => {
+	return (
+		<svg width={width} height={height} {...props}>
+			<use href={`#${id}`} />
+		</svg>
+	);
+};
+
+// 사용방법
+
+<Icon
+	id="next" // symbol 옆에 작성한 id를 인자로 받습니다.
+	width="2rem"
+	height="2rem"
+	css={css`
+		cursor: pointer;
+	`}
+	onClick={() => console.log("hihi")}
+/>;
+```
+
+# Result
+
+![image](https://github.com/boostcampwm2023/web14-gomterview/assets/77886826/d39265e3-f8bd-4461-b1b7-79753043dcf6)
+
+![image](https://github.com/boostcampwm2023/web14-gomterview/assets/77886826/0b52db6b-2efe-476b-8cf7-3da0b7a757a2)
+
+다음과 같은 코드로 svg 파일을 쉽게 관리 할 수 있게 되었습니다.
+이로 인해서 다른 svg 파일을 사용하고 싶다면, 단순히 Icon 의 props를 변경하기만 하면 됩니다!
