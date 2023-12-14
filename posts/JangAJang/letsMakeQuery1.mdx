@@ -1,0 +1,128 @@
+---
+title: 쿼리 최적화 하기 1단계
+description: 인덱스 넣기 & 쓸데없는 쿼리 줄이기
+author: JangAJang
+publishedAt: 2023-12-05
+---
+
+> [원본](https://jangsarchive.tistory.com/147)
+
+곰터뷰를 진행하면서, 전체 테스트를 실행할 때 항상 13~16초의 시간이 걸렸다.
+
+테스트가 약 260개정도였을 때 이 정도가 나온다고 했을 때, 초당 20개의 테스트가 돌아간다고 생각했다.
+
+![](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2FbcTtvg%2FbtsBuhYZcFO%2FVyY0cPtVqXt9lQPCau3HHK%2Fimg.webp)
+
+하지만 나는 더, 더 빨라지길 원했다...
+
+그래서 모든 API의 쿼리 로그를 분석해보기 시작했다.
+
+![](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2FBb9KH%2FbtsBugeG6q9%2FevqfTqgrkexAtdKTGOJ0DK%2Fimg.png)
+
+이렇게 모든 로깅을 true로 설정하고, 로그를 분석하면서 조금씩 메모를 진행했다.
+
+![](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2FbDCY16%2FbtsBr309NyZ%2FhFrFcBbGoJYRdk5kW7ppHk%2Fimg.png)
+
+쓰다보니, 필요한 부분과, 이게 꼭 있어야 할까 싶은 부분들이 있었다.
+
+이에 대한 간단한 정리들과, 우리 팀에서 처리한 방법을 공유해보려고 한다.
+
+---
+
+# **SAVE**
+
+epository.save라는 로직을 정말 흔하게 사용했다.
+
+이유는? 겁나게 편했다. 진짜 다른 뭔가를 생각할 필요가 없었다.
+
+하지만 편하다는건? 라이브러리처럼 그 속에서 겁나게 많은 일들을 할 수 있다는 뜻이다.
+
+![](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2FrVf50%2FbtsBvTiLrje%2FU6c6lWNNzYDzgaIkvslsK0%2Fimg.png)
+
+해당 엔티티를 데이터베이스에 저장한다. 만약 존재하지 않는다면 insert, 존재한다면 update를 처리한다.
+
+```
+START TRANSACTION
+INSERT INTO ~~~~;
+SELECT `Workbook` ~~~~;
+COMMIT
+```
+
+트랜잭션을 직접 만들어주는 것은 좋지만, 트랜잭션은 후에 더 크게 만들어서 더 빠르게 해야겠다는 생각이 들었다.
+
+그렇게 보았을 때, select를 무조건 나가는 이런 쿼리가 좋을지 모르겠다는 생각이 들었다.
+
+그래서, save를 아래와 같이 두 가지 경우로 수정했다.
+
+- 새로운 엔티티를 추가하는 로직을 부를 경우, insert(entity)를 처리해주자.
+- 이미 존재하는 엔티티를 수정한다면, 검증을 위해 select & validate를 진행했다. 이럴 때 update({id: entity.id}, entity)로 처리해주자.
+  라는 방법으로 이를 수정했다.
+
+하고나니 불필요한 select가 하나씩 줄어드는 효과를 가질 수 있었다.
+
+# **EAGER**
+
+기존에는 빠른 조회를 위해 eager를 entity의 연관관계에 등록해두었다.
+
+이렇게 하면, 장점이자 단점이 있다.
+
+## **_매 순간 다른 객체들을 left join해서 가져온다._**
+
+이게 확실히 모든 select 로직에서 조인한 객체를 쓴다면 좋지만,
+
+그게 아니라면 독이 될 수 있다는 점을 인지하고 있지만 건드리진 못하고있었다(...나자신 반성해...)
+
+그래서, 해당 외래키를 eager로 설정한 모든 객체에서 eager를 뺐다.
+
+```
+async findAll() {
+    return this.repository
+      .createQueryBuilder('Workbook')
+      .leftJoinAndSelect('Workbook.category', 'category')
+      .leftJoinAndSelect('Workbook.member', 'member')
+      .where('Workbook.isPublic = :state', { state: true })
+      .getMany();
+  }
+```
+
+이런 식으로 필요할 때 마다 join해서 사용하려고 수정했다.
+
+하지만, 이렇게 수정했을 때 생각해야 하는 것이 있었다.
+
+# **INDEX(나는 HDEX가 더 좋...읍!)**
+
+사실 진짜 주변에 이거 무섭다고 칭얼거렸다.
+
+sql에 들어가서 explain으로 쿼리에 대한 성능을 체크하고, 이에 대한 인덱스를 직접 집어넣어야겠다는 생각을 했다.
+
+그런데....
+
+![](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2FZvwRW%2FbtsBufUpvdX%2FuME5EtU8QgWmWZNBdaKWq0%2Fimg.png)
+
+![](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2Fb7u7Y2%2FbtsBtF6T0KG%2FSrT2OcIZK3pKrIdjPuLyk1%2Fimg.png)
+
+nestjs는 코드레벨에서 인덱스를 자동 등록해준다.
+
+그래서 딥 다이빙 해본 결과, 외래키도 등록될 때 인덱스를 등록시켜주는 구조이다.
+
+### 바로 코드레벨에서 달려들었다.
+
+leftJoin을 하는 부분, order하는 부분, where하는 부분을 전부 생각해보았다.
+
+결국 leftJoin은 외래키로 등록되어있고, 해당 부분은 nestjs+type orm환경에서는 인덱스가 자동적으로 등록되어있었다.
+
+where로 조회되는 부분(where/andWhere나 where/orWhere)에서는 복합 인덱스를 추가했다
+
+orderBy로 정렬되는 부분도 인덱스를 추가해주었다.
+
+이렇게 하고 전체 테스트를 돌려보았다.
+
+![](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2FeB8Ftr%2FbtsBuysyVow%2FxRuQcik4h60bqDrutgNP50%2Fimg.png)
+
+이제 테스트를 하는데에 걸리는 시간이 8초대로 줄었다(심지어 이전보다 테스트코드가 15개 늘었다)
+
+테스트에서는 테이블에 레코드가 많아야 20개정도인 것을 감안하면, 실제 프로덕션에서는 더 성능적으로 향상을 야기했다고 생각한다.
+
+더 빠르게 만들기 위한 비장의 한 수를 처리하고, 테스트 커버리지에 관한 정리를 해야곘다.
+
+그럼...twenty thousand...🔥
