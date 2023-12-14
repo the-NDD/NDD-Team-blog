@@ -1,0 +1,225 @@
+---
+title: 헬스체크/스케줄러로 서버 로그 띄우기
+description: 헬스? 라잇웨잇 베이베!
+author: JangAJang
+publishedAt: 2023-12-13
+---
+
+> [원본](https://jangsarchive.tistory.com/151)
+
+프로젝트를 진행하면서, 서버의 상태를 확인하는 플로우를 만들어야 했다.
+
+쉘스크립트를 crontab을 이용해서 slack에 서버 상태 메시지를 보내는 방법을 만들었지만,
+
+이걸로는 부족했다.
+
+내가 원하는 것은 일종의 서버실이었다.
+
+서버 하나에서 DB, Main서버를 계속해서 확인하는 로직을 원했다.
+
+로컬에서도 실행시켜 서버 상태를 계속 확인하고, 다른 서버에서 주기적으로 시그널링을 처리했으면 좋겠다는 생각을 했다.
+
+![](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2FcTB3lH%2FbtsBXMD94jH%2F0aRtsVCDCKxaOnG94Z61J0%2Fimg.png)
+
+그래서 어떻게 처리했을까?
+
+크게 라이브러리 추가, 모듈 구현, 프로바이더 구현으로 나누어보았다.
+
+# **라이브러리 추가**
+
+이 동작을 구현하기 위해서, 3가지 라이브러리를 추가했다.
+
+```
+npm install @nestjs/terminus
+npm install @nestjs/schedule
+npm install @nestjs/axios
+```
+
+이렇게 terminus(헬스체크기능), schedule(crontab기능), axios(외부 ip요청) 라이브러리를 넣어주고 시작했다.
+
+각 라이브러리들이 어떻게 사용되었는지 하나씩 코드를 만들면서 정리했다.
+
+# **모듈 구현**
+
+```
+const logger = new LoggerService('healthcheck');
+
+@Module({
+  imports: [TerminusModule, HttpModule, ScheduleModule.forRoot()],
+  providers: [
+    HealthCheckScheduler,
+    HealthCheckService,
+    TypeOrmHealthIndicator,
+    HealthCheckExecutor,
+    {
+      provide: 'TERMINUS_ERROR_LOGGER',
+      useValue: Logger.error.bind(logger),
+    },
+    {
+      provide: 'TERMINUS_LOGGER',
+      useValue: logger,
+    },
+  ],
+  controllers: [],
+})
+export class HealthModule {}
+```
+
+HealthModule을 따로 만들었다.
+
+헬스체크기능을 위한 TerminusModule, axios를 위한 HttpModule, 스케줄링을 위한 ScheduleModule.forRoot()를 import했다.
+
+providers로는
+
+- HealthCheckScheduler
+  - 내가 만들 스케줄러이다.
+- HealthCheckService
+  - HealthCheckExecutor, ErrorLogger, Logger를 사용한다. TERMINUS_ERROR_LOGGER, TERMINUS_LOGGER를 사용한다. 이 때 로거들은 내가 만든 로거를 사용하고 싶어서 커스텀 로거를 등록시켰다.
+  - 커스텀 로거를 위해 provide & useValue를 사용했다. 이런 방식으로 어떤 프로바이더/컨트롤러가 받아야 하는 특정 프로바이더를 지정할 수 있다.
+- TypeOrmHealthIndicator : 데이터베이스 상태가 살아있는지 따로 ping을 확인하는 법이 있었다. 이를 적용하기 위해 사용해보았다.
+
+# **프로바이더 구현**
+
+```
+@Injectable()
+export class HealthCheckScheduler {
+  private readonly dbLogger = new LoggerService('DB');
+  private readonly main = new LoggerService('MAIN');
+
+  constructor(
+    private health: HealthCheckService,
+    private db: TypeOrmHealthIndicator,
+    private http: HttpHealthIndicator,
+  ) {}
+
+  @Cron('0 * * * * *')
+  async checkDB() {
+    try {
+      await this.health.check([
+        async () => await this.db.pingCheck('database'),
+      ]);
+      this.dbLogger.log(`${new Date()} : ON`);
+    } catch (error) {
+      this.dbLogger.error(`${new Date()} : OFF`, error.stack);
+    }
+  }
+
+  @Cron('0 * * * * *')
+  async checkMain() {
+    try {
+      await this.health.check([
+        async () =>
+          await this.http.pingCheck('gomterview-main', process.env.BE_URL),
+      ]);
+      this.main.log(`${new Date()} : ON`);
+    } catch (error) {
+      this.main.error(`${new Date()} : OFF`, error.stack);
+    }
+  }
+}
+```
+
+이런식으로 프로바이더를 구현했다. 하나씩 정리를 해보자.
+
+- `TypeOrmHealthIndicator`
+  - 이전에 주입시킨 프로바이더이다.
+  - 데이터베이스 상태를 확인하는데 이용한다.
+- `HttpHealthIndicator`
+  - HTTP 요청을 통해 상태를 확인하는데 이용한다.
+- `HealthCheckService`
+  - 서버의 healthCheck(요청에 대한 응답 상태등을 확인)이나 pingCheck(ping요청에 대한 응답 여부 확인)에 이용한다.
+- `@Cron` : 크론탭과 같은 방식으로 주기시간을 등록할 수 있다.
+  - 앞 자리부터 초-분-시-일-월-년 으로 주기를 등록할 수 있다.
+  - 지금같은 경우에는, 매년 매월 매일 매시 매분 0초마다(즉 1분마다) 주기적으로 해당 동작을 수행한다고 보면 된다.
+- `health.check([cb()])`
+  - 콜백 로직을 비동기적으로 처리해 요청 응답을 확인한다. 없다면 예외처리하고, 이 때 TERMINUS_ERROR_LOGGER로 로깅되는게 기본이며, 이를 try-catch해서 내 커스텀 로그로 응답을 보내는데에 사용했다.
+
+즉, 해당 로직들은 Main서버와, DB서버에 핑 체크를 하고 상황에 따라 커스텀 로그를 출력시키는 것을 주기화 시킨 것이다.
+
+# **정리**
+
+이런식으로 처리했을 때, 매 분마다 상태를 로깅처리해주었다.
+
+이를 통해 원하는 로그서버를 만들었다.
+
+현재 프로젝트를 진행하면서 백엔드는 3개의 서버를 쓴다(써봐야 셋 다 프리티어 ec2 인스턴스이다)
+
+- Main 서버
+- Dev 서버(프론트/백의 개발용)
+- DB 서버
+
+이 상황에서 Dev가 할 일이 현재는 별로 없다(프론트 3명, 백 2명이 전부인 팀이다)
+
+Dev가 조금 더 개발자를 위한 서버가 되었으면 좋겠다는 취지로 로그를 추가했다.
+
+이제 우리의 Dev 서버는 모든 프론트/백에서 계속해서 로깅하며 처리하는 서버가 되었다. (이제야 Dev 서버도 좀 쓸모가 생겼다 )
+
+즉 메인과 Dev는 같은 깃허브 리포지토리를 쓰지만, Main은 Health가 없이, Dev는 Health를 가지고 배포하는 식으로 진행했다.
+
+# **PS(한국말론 추신)**
+
+Main에서도 같은 LoggerService가 존재하는데, 이걸 써먹어본적이 없다.
+
+그래서 이걸 가지고 두 가지 로그를 추가했다.
+
+- 매 요청마다 어느 api로 요청이 왔는지
+- 예외 발생시에 발생한 엔드포인트, 그리고 그 때의 에러코드
+
+```
+async function bootstrap() {
+  initializeTransactionalContext();
+  const app = await NestFactory.create(AppModule, {
+    abortOnError: true,
+  });
+  const expressApp = app.getHttpAdapter().getInstance();
+  const logger = new LoggerService('traffic');
+  ...
+  expressApp.use((req, res, next) => {
+    logger.info(req.url);
+    next();
+  });
+  await app.listen(8080, '0.0.0.0');
+}
+```
+
+이렇게 로거를 하나 달아서, 어떤 api가 요청이 들어오는지 로그처리하게 했다(이 때 logger는 출력뿐만 아니라, 로컬에 파일을 만들고 작성하는 기능까지 담겨있다)
+
+또한, 예외처리시에 우리가 만든 커스텀 예외가 어디에서 터지는지 확인하게 했다.
+
+```
+class HttpCustomException extends HttpException {
+  constructor(message: string, errorCode: string, status: number) {
+    super({ message: message, errorCode: errorCode }, status);
+    errorLogger.error(errorCode, super.stack);
+  }
+}
+```
+
+이런식으로 어떤 엔드포인트에서 어떤 에러코드가 나왔는지, 그리고 이 때 stack까지 같이 출력하게 했다.
+
+단순하지만, 의도치 않은 케이스나 터지면 안되는 예외케이스를 로깅하는데 용이할 것 같다는 생각이 들었다.
+(전부다 500으로 만들어 숨겨두긴 했지만, errorCode를 통해 개발자만 볼 수 있게 수정해두었다)
+
+이를 통해 로그를 발생시키고, 이를 우리가 아래와 같은 로그를 메인에서 처리하게 했다.
+
+![](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2FclE5yK%2FbtsBRTdQq76%2FfudBuTgpGOYyoO0UKbkIc1%2Fimg.png)
+
+물론 외부 프로그램등을 활용하면 더 수월하게 로깅을 할 수 있는 것을 알지만, 아직은 부스트캠프 기간이어서 최대한 많은 것을 학습해서 만들어보면서하고있다.
+
+메인과 데브에서 각자 자기가 보여줘야 할 것들이 있다고 느낀다.
+
+메인에서는 내가 어떤 요청을 받았고, 어떤 에러가 있고, 어떤 이유인지 알려줘야 하며,
+
+dev서버에서는 다른 서버들의 상태를 보여줘야 한다고 생각한다.
+
+이를 위한 로그를 달고나니, 프론트에서 '뭐가 이상해요! 뭐가 안돼요!'를 하는 것 보단, 더 효율적인 방법이 나왔다.
+
+강의중에서도, 멘토링중에서도 로깅에 대해서는 많은 로그를 만들어두고, 그 중에서 필요한 부분을 찾아가는 것이 중요하다고 한다.
+
+이를 위한 시작으로 하나씩 추가하거나 빼는 식으로 진행하면 될 것 같다.
+
+다들 디버깅 잘하는 그날까지 로그를 보자!!
+
+(사실 터미널로 로그 보니까 진짜 the love다..하하)
+
+그럼...twenty thousand...🔥

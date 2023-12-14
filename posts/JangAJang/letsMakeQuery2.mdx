@@ -1,0 +1,362 @@
+---
+title: 쿼리 최적화 하기 2단계
+description: 트랜잭션 처리하기
+author: JangAJang
+publishedAt: 2023-12-05
+---
+
+> [원본](https://jangsarchive.tistory.com/151)
+
+# **미리보는 최종요약**
+
+![](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2FI91lL%2FbtsBY0WiSEJ%2F07mSRF4aNsfZik5D0HbOc1%2Fimg.jpg)
+
+테스트과정에서 도대체 왜 이럴까를 하루종일 고민한 프로젝트이다.
+
+확실히 외부 라이브러리를 사용했을 때 구현이 빠르다는 장점이 있지만, 테스트시에 어떤게 문제인지 확인하기 어렵다는 단점도 있었다.
+
+[기존 쿼리 최적화](https://blog.gomterview.com/posts/JangAJang_letsMakeQuery1)를 보고 오는 것도 추천한다.
+
+이걸 하고 나서 그 다음에 처리한 과정이기 때문이다.
+
+# **트랜잭션이란? 그리고 트랜잭션화의 필요성**
+
+데이터베이스를 사용할 때 [트랜잭션](https://jangsarchive.tistory.com/11)이란 무엇일까?
+
+정말 간단하게, 트랜잭션은 DB에 보내는 쿼리를 묶음이라고 생각하면 된다.
+
+쿼리를 하나씩 계속 보내는 것이 아닌, 하나를 통째로 보내서 성공하면 변경 사항을 전부 적용시키고(커밋), 실패하면 해당 쿼리들에 의한 변경을 초기화시키는(롤백) 묶음이다.
+
+이를 우리 프로젝트에서 적용시켜야 할 이유가 있었다.
+
+```
+문제집을 복사할 때, 복사한 원본 문제집의 copyCount를 1 증가시키고,
+복사된 질문들은 새로운 copy된 Question으로 저장시킨다
+이런 로직을 만들어서 쓰는 과정에서, 문제집 원본을 찾아서 copyCount를 1 증가시킨 후, Question을 복사하려고 했다.
+
+```
+
+근데 복사하려는 질문이 없을 때 에러처리가 나고, 400에러를 반환한다.
+
+이걸 처음부터 모든걸 조회하고 검증한 후, copyCount를 증가시키면 괜찮겠지만, 이걸 트랜잭션화 시켜서 실패시 그냥 copyCount의 증가를 롤백시켜 버리는 과정을 추가해보는 것도 좋은 학습일 것이라고 생각했다.
+
+비즈니스 로직에서 이를 적용시키려면 어떻게 해야할까?
+
+# **1. QueryRunner사용하기**
+
+nestjs&typeorm에서 기본적으로 제공하는 QueryRunner를 이용해 위에서 말한 비즈니스 로직을 처리해보았다.
+
+```
+@Injectable()
+export class QuestionService {
+
+  private queryRunner: QueryRunner;
+
+  constructor(
+    private questionRepository: QuestionRepository,
+    private workbookRepository: WorkbookRepository,
+    dataSource: DataSource,
+  ) {
+    this.queryRunner = dataSource.createQueryRunner();
+  }
+
+  async copyQuestions(
+    copyQuestionRequest: CopyQuestionRequest,
+    member: Member,
+  ) {
+    await this.queryRunner.connect();
+    await this.queryRunner.startTransaction();
+    try {
+      const workbook = await this.workbookRepository.findById(
+        copyQuestionRequest.workbookId,
+      );
+      validateWorkbook(workbook);
+      validateWorkbookOwner(workbook, member);
+
+      const questions = await this.questionRepository.findAllByIds(
+        copyQuestionRequest.questionIds,
+      );
+
+      Array.from(
+        new Set(questions.map((question) => question.workbook)),
+      ).forEach(async (workbook) => {
+        workbook.increaseCopyCount();
+        await this.workbookRepository.update(workbook);
+      });
+
+      await this.questionRepository.saveAll(
+        questions.map((question) => this.createCopy(question, workbook)),
+      );
+      await this.queryRunner.commitTransaction();
+      return WorkbookIdResponse.of(workbook);
+    } catch (e) {
+      await this.queryRunner.rollbackTransaction();
+    } finally {
+      await this.queryRunner.release();
+    }
+  }
+}
+
+```
+
+이런식으로 QueryRunner를 연결시켜준 후, 트랜잭션을 시작한다.
+
+return 전에 트랜잭션을 커밋해주고 return하며, 예외처리로 catch로 넘어가면 롤백을 시켜준다.
+
+무엇이 되었건, connect시킨 쿼리 러너를 릴리즈해준다.
+
+이렇게 해서 트랜잭션화를 시켜줄 수 있다는 문서들을 gitbook, TypeOrm에서 보았다.
+
+하지만 제일 큰 문제는, 비즈니스 로직이 너무 더러워질 것 같다는 점이다.
+
+매 순간마다 저걸 메서드 안에 넣어주어야 하며, try-catch-finally를 메서드화 시키고, 안에 콜백 메서드를 넣고, 그 안에 return 전에 commit을 시킨다는 것이 너무 귀찮았다.
+
+귀차니즘을 해결하기 위한 방법을 찾아보았다.
+
+---
+
+# **2. 라이브러리 사용하기(typeorm-transactional)**
+
+이걸 채택한 가장 큰 이유는, JPA처럼 @Transactional로 하나의 트랜잭션 처리를 편하게 하고 싶었기 때문이다.
+
+이렇게 어노테이션(아 이 세계에선 데코레이터였던가...)를 사용해서 편하게 개발할 수 없을까라는 생각이 들었다.
+
+이 때 [typeorm-transactional](https://www.npmjs.com/package/typeorm-transactional)라는 라이브러리를 보게 되었다.
+
+이걸 이용해서 극한의 이득충이 되어보기로 했다.
+
+공식문서대로 하나씩 적용해보자.
+
+```
+// main.ts
+async function bootstrap() {
+  initializeTransactionalContext();
+  const app = await NestFactory.create(AppModule);
+  ...
+
+// app.module.ts
+@Module({
+  imports: [
+    TypeOrmModule.forRootAsync(MYSQL_OPTION),
+    ....
+
+
+// MYSQL_OPTION
+export const MYSQL_OPTION: TypeOrmModuleAsyncOptions = {
+  useFactory() {
+    return {
+      type: 'mysql',
+      name: 'main',
+      host: process.env.DATABASE_HOST,
+      port: Number(process.env.DATABASE_PORT),
+      entities: [Member, Category, Workbook, Question, Answer, Video],
+      username: process.env.DATABASE_USER,
+      password: process.env.DATABASE_PASSWORD,
+      database: process.env.DATABASE,
+      autoLoadEntities: true,
+      synchronize: true,
+    };
+  },
+  async dataSourceFactory(options) {
+    if (!options) {
+      throw new Error('Invalid options passed');
+    }
+
+    return addTransactionalDataSource(new DataSource(options));
+  },
+};
+```
+
+이제 TypeOrm을 비동기 모듈로 등록해주고, 이 때 dataSourceFactory를 만들어준다.
+
+여기에서 addTransactionalDataSource를 통해서 TransactionalContext를 만들어준다.
+
+이는 트랜잭션 처리를 위한 다리를 만들어주는 로직이다.
+
+우리는 프로젝트 시작시에 하나의 트랜잭션 컨텍스트를 만들고, 여기에서만 트랜잭션을 처리해주기 위해
+
+프로젝트 실행시 하나의 트랜잭션 컨텍스트를 만들게 했다.
+
+```
+@Transactional()
+  async createWorkbook(
+    createWorkbookRequest: CreateWorkbookRequest,
+    member: Member,
+  ) {
+    const category = await this.categoryRepository.findByCategoryId(
+      createWorkbookRequest.categoryId,
+    );
+    validateManipulatedToken(member);
+    validateCategory(category);
+
+    const workbook = Workbook.of(
+      createWorkbookRequest.title,
+      createWorkbookRequest.content,
+      category,
+      member,
+      createWorkbookRequest.isPublic,
+    );
+    const result = await this.workbookRepository.insert(workbook);
+    return result.identifiers[0].id as number;
+  }
+```
+
+이제 이런 식으로 @Transactional()데코레이터 하나를 넣어주면 된다.
+
+이런식으로 요청을 보낼 때,
+
+![](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2FwPa1H%2FbtsBUJ9mJdz%2FkOOUYCARimkPQC0cGvUT0K%2Fimg.png)
+
+이런식으로 하나의 트랜잭션화를 시키는 성공적인 결과가 나왔다.
+
+라고 생각했다.
+
+![](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2FYeKRM%2FbtsBYsS3TsR%2F63LoasznkXYeed0JaRlZnk%2Fimg.png)
+
+# **하지만 트러블 슈팅은 참지않긔⭐️**
+
+근데 상당한 문제들이 있었다.
+
+해당 로직으로 필요한 트랜잭션을 만들었을 때,
+
+1. Transactional is undefined
+2. transaction in transaction
+3. Error: DataSource with name "default" has already added.
+   이런 문제들이 발생했다.
+
+이걸로 거의 모든 테스트가 터져버리는 문제가 있었다.
+
+이유가 뭘까?
+
+## **1. 트랜잭션이 뭔지 모른다!**
+
+jest에서 트랜잭션이 명시되어있는 경우에, 이를 단위테스트에서 모킹해주어야 했다.
+
+```
+jest.mock('typeorm-transactional', () => ({
+  Transactional: () => () => ({}),
+}));
+```
+
+라는 로직으로 모킹은 모두 해결했다.
+
+## **2. 트랜잭션 속에 트랜잭션!**
+
+우리가 추가적인 트랜잭션을 만든적이 없는데, 왜 이런 에러가 나올까 너무 고민했다.
+
+근데, 원인은 단순하다.
+
+```
+async save(workbook: Workbook) {
+  return await this.repository.save(workbook);
+}
+```
+
+save라는 Type ORM 기본 로직은, 사실 select & update/insert를 한 트랜잭션 안에서 처리해준다. (사실 이건 다들 알거다)
+
+spring에서 @Transactional을 사용하고, 안에서 save를 해도 아무 문제가 없었지만,
+
+nestjs에서@Transactional을 사용하고, 안에서 save를 하면 트랜잭션 속에 트랜잭션이 있을 수 없다는 에러를 터뜨렸다.
+
+그래서, 나는 save로직을 아래의 방식으로 바꿔주는 과정을 거쳤다.
+
+```
+async save(workbook: Workbook) {
+  await this.repository.insert(workbook);
+  return this.repository.findOneBy({
+    title: workbook.title,
+    member: { id: workbook.member.id },
+  });
+}
+```
+
+코드를 바꾸고 나서, save가 트랜잭션 속에 있는 경우에 대한 문제를 수정했다.
+
+## **3. 이미 데이터소스, 트랜잭셔널 컨텍스트가 존재한다!**
+
+사실 이걸 이해하는 과정에 제일 어려웠다.
+
+도대체 왜 이런 에러가 나왔을까?
+
+```
+async dataSourceFactory(options) {
+    if (!options) {
+      throw new Error('Invalid options passed');
+    }
+
+    return addTransactionalDataSource(new DataSource(options));
+  }
+```
+
+이 로직과 jest가 같이 있는게 문제였다.
+
+아까 했던 문장에서, 하나를 기억해야 한다.
+
+# **_우리는 프로젝트 시작시에 하나의 트랜잭션 컨텍스트를 만들고, 여기에서만 트랜잭션을 처리해주기 위해 프로젝트 실행시 하나의 트랜잭션 컨텍스트를 만들게 했다. _**
+
+즉, jest를 실행하는 테스트환경에서 우리는 데이터베이스를 위한 연결다리 하나만을 만든다
+(이 때 이름을 등록해주지 않아 default로 등록된다)
+
+근데, jest는 병렬적으로 테스트를 하며, 나는 테스트마다 다른 Test Module을 만든다.
+
+여기에서 데이터베이스 연결다리를 다 만들게되는데?
+
+그래서 터졌다
+
+덕분에 jest가 모든 테스트를 병렬적으로 진행한다는 것,
+
+dataSourceFactory의 지금 내 로직에서는 하나의 연결다리로만 통신을 한다는 점을 알게 되었다
+
+테스트에서 이걸 해결하기 위해 새로운 연결다리를 만들 때, 이미 존재한다면 그걸 가져와서 사용하는 것으로 끝내게 수정했다.
+
+```
+async dataSourceFactory(options) {
+  return (
+    getDataSourceByName('default') ||
+    addTransactionalDataSource(new DataSource(options))
+  );
+}
+```
+
+이런 로직을 통해 default라는 이름이 있으면 해당 데이터베이스를 가져와 사용하고 끝내고, 없다면 새롭게 default로 만들어주는 로직으로 끝냈다. (두 함수는 라이브러리 제공 함수다)
+
+이렇게 프로덕션, 테스트 환경에서 모두 트랜잭션 처리를 성공시켰다.
+
+![](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2FdoLEG8%2FbtsBR7iiJqa%2FKjKZlFbG5FdqJTL1HuRQY1%2Fimg.png)
+
+테스트가 1편보다 12개 증가하고, 전체 로직 수행시간이 오히려 0.3초 줄어드는 효과를 보았다.
+
+개꿀이구만?
+
+![](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2FcySuxI%2FbtsBTWBmoQK%2FbDOQkJbVUMwYpaQDkcMoRK%2Fimg.jpg)
+
+# **진짜 개꿀이기만 할까?**
+
+하지만, 마냥 개꿀은 아니었다. 트랜잭션은 내 생각보다 더 조심해야했다.
+
+모든 로직에 @Transactional()을 달고 처리하면 좋을까를 멘토님께 여쭈어보았을 때,
+
+그건 아니라는 이야기가 있었다.
+
+나는 Spring에서 모든 로직에 @Transactional를 달았었는데,
+
+이로인해 트랜잭션이 꼬여 문제가 있을 수 있다고 했다.
+
+이에 대해 찾아보았을 때, 모든 로직의 트랜잭션화는 크게 두 가지의 문제를 가지게 한다는 점을 알게 되었다.
+
+- 트랜잭션의 중첩은 예기치 못한 결과를 불러올 수 있다. 또한, 여러 트랜잭션이 동시에 들어갔을 때 일관성과 안전성이 떨어진다고 한다.
+  - 격리 수준을 설정할 수 있는 typeorm-transactional데코레이터의 특성을 이용해서 조금은 해결할 수 있겠다는 생각이 들기도 했다.
+- 트랜잭션 경계 설정의 오버헤드
+  - 이전의 쿼리 러너를 보면 더 이해가 되기도 했다. 커넥션을 만들고, 커넥션 안에서 커밋/롤백후에 릴리즈를 한다는 것은 그만큼 오버헤드를 가져야 한다는 문제가 있다. 이로 인한 딜레이/성능 저하가 문제가 될 수 있다.
+
+1번은 격리수준 설정, 트랜잭션 설정을 확인하면서 지나간다면 괜찮겠지만,
+
+2번의 이유에서 확실히 모든 로직의 트랜잭션화가 마냥 좋진 않겠다는 생각이 들기도 했다.
+
+모든 쿼리에 대한 롤백이 확실히 필요할 때,
+
+그리고 격리수준이 설정되어야 할 경우에만 해당 트랜잭션이 동작되게 하는 것이 좋다는 생각이 든다.
+
+앞으로 트랜잭션을 **격리 수준의 필요성**이 있을 때, **확실하게 성능의 향상이 있는지 검증하고 사용**하는 것이 좋겠다는 생각이 든다.
+
+그럼...twenty thousand...🔥
