@@ -55,7 +55,7 @@ COMMIT
 그래서, save를 아래와 같이 두 가지 경우로 수정했다.
 
 - 새로운 엔티티를 추가하는 로직을 부를 경우, insert(entity)를 처리해주자.
-- 이미 존재하는 엔티티를 수정한다면, 검증을 위해 select & validate를 진행했다. 이럴 때 update({id: entity.id}, entity)로 처리해주자.
+- 이미 존재하는 엔티티를 수정한다면, 검증을 위해 select & validate를 진행했다. 이럴 때 `update({id: entity.id}, entity)`로 처리해주자.
   라는 방법으로 이를 수정했다.
 
 하고나니 불필요한 select가 하나씩 줄어드는 효과를 가질 수 있었다.
