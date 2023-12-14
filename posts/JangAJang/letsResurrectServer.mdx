@@ -1,0 +1,169 @@
+---
+title: 도커를 되살려보자!!(개복치 키우기 도커편)
+description: 어 형이야.
+author: JangAJang
+publishedAt: 2023-12-13
+---
+
+> [원본](https://jangsarchive.tistory.com/149)
+
+# **Before This**
+
+이걸 진행하기 전에, 우리가 먼저 서버에 대해서 확인해야 할 사항이 있다.
+
+1. 프로젝트 자체에 메모리 누수를 확인한다.
+2. 프로젝트 내에서 메모리 사용량을 모니터링해 과도한 부분을 최적화한다.
+
+지금부터 아래에 있는 상황들은, 서버 자체의 메모리를 키우거나, 메모리가 커져도 죽지 않게 해주는 방법이다.
+
+이 이전에, 내 프로젝트 자체가 메모리를 필요 이상으로 사용하는 것은 아닌가 확인하고 진행해야 한다는 점을 생각해야 한다.
+
+---
+
+# **_그러면 시작해보자_**
+
+![](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2FbNSW97%2FbtsBcT5TyPQ%2FsiHLex09LZpoftm8sPreU0%2Fimg.webp)
+
+도커로 프로젝트를 올렸다.
+
+근데 계속 터졌다.
+
+분명 잘 됐는데? 분명 문제 없었는데? 분명 컴파일하고 실행하는데 에러가 없는데 왜 꺼질까?
+
+실행시키고 온갖 요청을 할 때 docker logs ${container}로 로그를 보았지만 아무런 에러가 없었다.
+
+도커 전체 로그를 봤지만 문제가 없었다.
+
+![](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2FbL7gkz%2FbtsA8LngyON%2FFxDTb7lBXOL8HJRK3xHKS0%2Fimg.jpg)
+
+하하하 너무 즐겁다.
+
+원인 분석을 위해 3단계로 디버깅 스텝(?)을 만들어보았다.
+
+1. nestjs 서버가 문제일까?
+2. 도커가 문제일까?
+3. 아니면 서버 자체의 문제일까?
+
+서버가 문제라면 분명 이전의 docker logs로 확인이 되어야 한다. 하지만 문제가 없었다.
+
+그래서 도커 로그를 확인해보았다.
+
+```
+cat /var/log/docker.log
+```
+
+근데 이것도 아무런 문제가 없었다.
+
+에러가 명시된 적이 없었다.
+
+이제 서버를 건드려봐야겠다는 생각이 들었다.
+
+서버가 꺼지는 이유를 생각해보았다.
+
+- 서버의 메모리가 더 작다.
+- 프로세스가 Out Of Memory가 터졌다.
+
+이것저것 조사해보니 이런 두 가지 경우를 생각하게 되었다.
+
+이를 위한 각자의 처리과정을 생각해보았다.
+
+- 서버의 메모리가 너무 작다?
+  - 스왑 메모리를 사용해볼까?
+- Out of Memory?
+  - oom-killer-disable을 해볼까?
+
+이런 두 가지 과정을 진행했다.
+
+# **Swap Memory**
+
+일단 스왑메모리는 뭘까??
+
+우리의 하드디스크같은, 실제 저장 장치를 메모리처럼 사용하는 것이다.
+
+메모리가 부족하거나, 추가적인 필요량을 만들기 위해서 하드디스크의 일부를 메모리로 할당시키고,
+
+메모리로만 사용하는 방식이다.
+
+이걸 어떻게 쓸까?
+
+```
+// 스왑파일 생성 및 크기 결정
+sudo fallocate -l ${스왑파일 크기} /swapfile
+
+// 루트 사용자만 읽고 쓰게 할 수 있게 한다.
+sudo chmod 600 /swapfile
+
+// 스왑영역으로 아까 정한 크기만큼을 할당(선언한다!)
+sudo mkswap /swapfile
+
+// 시스템에 스왑 파일을 활성화한다.
+sudo swapon /swapfile
+
+// 서버가 꺼졌다 켜져도 스왑파일이 활성화되게 설정
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+```
+
+부하로 실제 트래픽을 최대로 받았을 때, 받을 수 있는 메모리 이상의 성능을 가질 수 있게 스왑 메모리를 가지게 두었다.
+
+근데 이렇게 해도 터졌다...
+
+여기서 OOM을 바로 생각하진 못했다(사실 저게 뭔지도 몰랐다)
+
+---
+
+# **OOM(Out Of Memory)**
+
+아웃 오브 메모리, 말 그대로 메모리가 일정치를 넘어가서 out되었다는 뜻이다.
+
+운영체제 자체에서 메모리가 부족할 때, 해당 프로세스를 강제로 종료하게 되는 케이스이다.
+
+하지만, 문제가 있다면 분명 CPU가 꽉 차지 않은 상태에서도 OOM스코어가 높다면 충분히 프로세스를 종료할 수 있다는 뜻이었다.
+
+![](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2FFM7Kr%2FbtsBTY0ctlt%2FYwXziFLNtcpjyWtfol4VS1%2Fimg.jpg)
+
+이로인한 문제가 뭘까?
+
+우리의 도커 프로세스가 분명 CPU를 전부 차지하고 서버자체가 터질 위험이 아닌(우리 기준으로는 CPU를 30퍼센트도 먹지 않았을 때) 도커 컨테이너 자체를 리눅스 서버가 kill해버리는, OOM KILL상태가 되어버린다.
+
+이를 확인하기 위한 나만의 여정을 정리해보자.
+
+## **1. 서버에서 도커 컨테이너가 존재하는지 확인하기**
+
+docker ps -a로 전체를 확인해보았다. 프로세스에서 OOM kill을 했을 때 컨테이너가 아예 사라진 이상한 현상(?)을 보고, 이게 도커에서 종료된것이 아닐것이다라고 추론했다.
+
+그리고, 도커 전체를 로깅해보았을 때, 도커 자체에서 종료시키지 않았다는 것을 알 수 있었다.
+
+## **2. OOM을 알고난 후, OOM 점수를 확인해보았다. **
+
+```
+ps aux | grep docker
+```
+
+이런 로직으로 docker라는 이름의 프로세스를 확인했다.
+![](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2FbMtvPL%2FbtsBXQGDmxc%2FYSK1uMVhKZGl015boFxfK1%2Fimg.png)
+
+프로세스들 중에서, 위에서 두 번째에 있는 프로세스의 oom 점수를 확인했다.
+
+이 때 oom score은 -1000 ~ 1000까지 존재하며, 1000에 가까울 수록 죽기 쉬운 프로세스가 된다는 것을 알 수 있었다.
+
+```
+cat /proc/${process_id}/oom_score
+```
+
+으로 점수를 확인했을 때, 1000점에 높을 수록 운영체제에서 프로세스를 kill시킬 우선순위가 높다는 것이다.
+
+이 때 OOM Kill을 방지하기 위한 조치로, 프로세스 id를 낮추거나, oom-kill-disabled를 설정해줄 수 있었다.
+
+docker로 간단하게 명령어를 설정해줄 수 있었다.
+
+```
+docker run --oom-kill-disable=true --restart unless-stopped -d -p 80:8080 ${container_name}
+```
+
+이런식으로 명령어를 처리했다.
+
+oom-kill-disable을 true로 설정해 이게 죽지 않도록 처리했다
+
+(이런식으로 하면 단점은, 이를 유지하다가 서버 자체가 죽어버릴 위험이 있다는 점이다)
+
+또한, docker 컨테이너가 죽어버렸을 때, restart옵션을 두었다.
