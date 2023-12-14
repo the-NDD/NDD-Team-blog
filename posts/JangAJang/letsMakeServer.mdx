@@ -194,17 +194,15 @@ docker run -d -p 80:8080 -e TZ=Asia/Seoul --name ${name} ${username}/${repositor
 
 각자의 과정에 대해서 간단하게 정리해보자면,
 
-- sudo docker build -t ${username}/${repo name}:${tag} --platform linux/arm64 .
+- `sudo docker build -t ${username}/${repo name}:${tag} --platform linux/arm64 . `
   - -t : 정확한 태그까지 명시해서 이미지를 만들어준다.
   - --platform : 실행시킬 백그라운드 플랫폼을 명시해준다. linux 프리티어에 동작시킬 수 있는 상태가 amd64/v3라서 이런 방식으로 설정했다.
-  - . : 루트 디렉토리를 명시했다.
-- sudo docker push ${username}/${repo name}:${tag}
+  - . : 루트 디렉토리를 명시했다. -` sudo docker push ${username}/${repo name}:${tag}`
   - 해당 이름으로 만들어진 이미지를 docker hub으로 푸쉬한다.
   - 깃허브에 리포지토리로 푸쉬한 것과 동일하다
   - 하지만, 도커는 이를 실행시킬 수 있는 독자적인 환경에 프로젝트를 둔다면, 깃허브는 프로젝트만을 올리는 방식이다.
-- sudo docker pull ${username}/${repository name}:${tag}
-  - 해당 이름의 이미지를 도커 허브에서 가져온다.
-- docker run -d -p 80:8080 -e TZ=Asia/Seoul --name ${name} ${username}/${repository name}:${tag}
+- `sudo docker pull ${username}/${repository name}:${tag}`
+  - 해당 이름의 이미지를 도커 허브에서 가져온다. -` docker run -d -p 80:8080 -e TZ=Asia/Seoul --name ${name} ${username}/${repository name}:${tag}`
   - -d : 백그라운드에서 실행시킨다.
   - -p 80:8080 : 포트를 설정해준다. 80포트로 외부 입력을 받으면, 내부적으로는 8080포트에 실행중인 애플리케이션에 연결해준다.
   - -e TZ=Asia/Seoul : 환경 설정을 해준다. 타임존을 서울로 설정해준다.
