@@ -1,14 +1,234 @@
 ---
-title: 해당 타이틀은 제목이 됩니다!
-description: 본 글은 테스트 문서입니다!!
+title: Infra AWS EC2로 배포를 해보자!!(서버 들어가기/도커로 받기)
+description: 반갑다 소년!
 author: JangAJang
-publishedAt: 2023-02-24
+publishedAt: 2023-11-10
 ---
 
-## title: 해당 타이틀은 제목이 됩니다!
+> [원본1](https://jangsarchive.tistory.com/144)
 
-## description: 테스트 문서에 대한 설명을 기입합니다.
+> [원본2](https://jangsarchive.tistory.com/146)
 
-## author: 사용자의 githubId를 사용합니다.
+![](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2Fqr3Gx%2Fbtsz2oGESA5%2Fd508KMbLit7Pdi1uMddYEk%2Fimg.webp)
 
-## publishedAt: 2023-02-24 // yyyy-mm-dd 형태로 입력합니다
+# **Intro**
+
+우리가 백엔드에서 배포라는 것을 하는 이유를 생각해보자.
+
+배포라고 하면 생각보다 대단한 행동을 하는 것 처럼 보이는 경향이 나에겐 자주 있었다.
+
+하지만 정말 단순하게 생각해서 배포란,
+
+**public IP를 가지고 있는 컴퓨터에서 프로젝트를 실행시키는 것**이다.
+
+이런 배포를 진행하기 위해서 내 컴퓨터에 공개 IP를 가지게 하고, 컴퓨터에서 프로젝트를 실행시킨다면 어떻게 될까?
+
+1. 내 컴퓨터의 IP는 모두에게 공개된다.
+2. 내 컴퓨터는 서비스의 끊김이 없게 항시 해당 프로젝트를 실행시키고, 인터넷도 끊기면 안된다.
+3. 내 컴퓨터는 이제 보안에 민감한 파일이 존재해서는 안된다(어떻게든 털릴 위험이 있다면 안되니깐)
+
+이런 위험을 감수하고 내 컴퓨터에서 배포를 진행한다?
+
+![](https://i.namu.wiki/i/ShTzcoMeHE4voCN_b3hTBqixr8Z2NO_O8XEIFIhN3_7rbIfSdq0hUfUw5GJJoF55QatW6GRiwpI9qbX3tI0Mlg.webp)
+
+# **서버를 여는 과정**
+
+기존에 ec2서버를 이용한 백엔드 배포를 몇 번 해보았지만, 이번엔 문서화를 해보면서 해봐야겠다는 생각이 들었다.
+
+![](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2FJPoJj%2Fbtsz532ulTb%2F0jLemz4IQwaPL8DYAtrfrk%2Fimg.png)
+
+나는 ubuntu 22.0.4를 이용한 배포를 할 계획이다. 이 때 64비트의 아키텍쳐를 사용하는 것을 추천한다.
+
+아래에 인스턴스 유형은 t2.micro를 이용할 꺼시다. 왜냐고?
+
+![](https://dontevennameit.com/wp-content/uploads/2020/03/18102-4.jpg)
+young wild and free!!!
+
+이후에 아래에서 키 페어를 생성해주어야 한다.
+
+![](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2FWnHNy%2Fbtsz6MFVDPk%2FNeGtHeqkuksavKOQtCfnkK%2Fimg.png)
+
+생성한 키 페어는 다운로드를 받게 되는데, 이는 가지고 있어야 한다.
+
+후에 ssh 로 서버에 접속할 때 해당 pem키(맥 기준)을 사용하게 된다.
+
+![](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2FUWzhZ%2Fbtsz2o7G6xW%2FQmMMp8nIOuGeAkLKsTs9Ck%2Fimg.png)
+
+네트워크 설정을 할 수 있다. 여기에서 보안 그룹을 초기 설정해줄 수 있지만,
+
+여기에서가 아닌, 후에 **보안그룹 설정** 탭에서 직접 설정하는 것이 나에겐 개인적으로 더 마음에 들었다.
+
+![](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2Fm013H%2Fbtsz2jyyR6Y%2FQdzgcBTuy8mIsabkzNqYck%2Fimg.png)
+
+스토리지 볼륨을 설정할 수 있는데, 최소 크기와 최대 크기에 제한이(프리티어 기준으론) 존재했다.
+
+최대 스토리지 볼륨을 가지게 설정했다.
+
+이제 더 없다.
+
+![](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2FcvJzTU%2Fbtsz22wx2PY%2F2Yq9LqxHb2j25p2ruwwwCk%2Fimg.png)
+
+이렇게 시작을 해주었다.
+
+그러면 어떻게 사용할 수 있을까?
+
+![](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2FBqqlq%2Fbtsz3eDM1zO%2FyK3zydHNLiJYiRTw5Tanm1%2Fimg.png)
+
+이렇게 대기중으로 새로운 인스턴스가 나온다.
+
+기다리면 실행중으로 바뀐다. 인스턴스 id를 클릭해보자.
+
+![](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2F7PfA6%2Fbtsz3OLDSF0%2FkyceeH6RNtRIiDrAy41NM1%2Fimg.png)
+
+인스턴스 세부 정보중에 public ipv4가 존재한다. 이걸 복사한다.
+
+맥 기준으로는 터미널을 열어, 다운로드 탭으로 이동하자.
+
+탭에 존재하는 pem키를 가지고 ssh 에 통신 요청을 해야한다.
+
+```
+chmod 400 ${pem키 이름}.pem
+```
+
+이런 명령어를 통해 pem키에 대한 자기 자신의 읽기 권한을 줄 수 있다.
+
+해당 읽기 권한으로 pem키 파일을 읽고, 거기에 있는 암호키로 EC2 인스턴스에 원격 접속을 할 수 있다.
+
+```
+ssh -i `주소/pem키` ubuntu@`퍼블릭 IPv4`
+```
+
+이런 명령으로 서버에 접속을 할 수 있다.
+
+![](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2FzV8sw%2Fbtsz7RNS9Yx%2F2OpcoFd48GwjpF9akw2vZK%2Fimg.png)
+
+이제 배포에 대한 Hello World를 성공했다.
+
+---
+
+# **Docker로 배포하기**
+
+## **배포를 Docker로 하는 이유?**
+
+쉽게 배포를 하기 위한 방법으로 git clone, docker의 방법을 생각해보았다.
+하지만, git clone을 했을 때, 내가 생각하는 가장 큰 몇 가지 문제를 생각해보았다.
+
+- git clone으로는 .gitignore한 파일을 받을 수 없다.
+- Java, Typescript는 각자의 파일을 .class, .js파일로 컴파일링해야하는 필요가 있다.
+  - 이렇게 컴파일링한 파일을 실행시키는 것이 더 사이즈를 작게할 수 있는 방법이다.
+- 서버 자체에서 해당 프로젝트들을 실행시키는 것이기 때문에, 만약 여러 프로젝트가 작은 단위로(그게 MSA죠?) 이루어져있다면, 이걸 하나씩 찾아서 꺼줘야한다.
+
+이를 해결하기 위해서, 도커라는 독립된 환경에서 프로젝트를 실행시키고, 프로젝트를 끌 때 그 환경을 꺼버리는 것이다.
+
+## **그러면 도커가 뭔데??**
+
+**도커**란, 애플리케이션을 컨테이너화 시키기 위한 플랫폼이다.
+각 컨테이너는 애플리케이션, 그리고 애플리케이션을 실행시키기 위한 독립된 환경이다.
+라는 말이 대부분의 사람들이 말해주는 공식적인 답변이다.
+
+그래서 나는 **나만의 방식**으로 개념을 다시 정리해보기 시작했다.
+
+독립된 환경, 즉 독립된 가상의 컴퓨터(?!)를 사용해 애플리케이션을 돌리게 된다.
+
+해당 컴퓨터는 정말로 그 애플리케이션을 실행시키기 위한 최소한의 환경을 가지게 된다.
+
+이러한 최소한의 환경/애플리케이션을 가진 가상의 컴퓨터들을 우리는 컨테이너라고 한다.
+
+이런 컨테이너를 통째로 옮길 때, 우리는 이미지를 만들어 주고받는다고 한다.
+
+이미지라는 것은, 컨테이너를 만들기 위한 탬플릿이다.
+
+우리가 실제 환경을 다 만들고, 이 환경 전체를 클라우드에 올리고 받기보단,
+
+이 **컨테이너를 만들기 위해 필요한 운영체제, 실행환경, 애플리케이션 코드, 라이브러리 및 종속성 등을 알려주는 설명서**인 것이다.
+
+해당 설명서를 클라우드에 올리고 받기를 통해서, 우리는 더 가볍게 공유를 하고, 공유받았을 때 설명서대로 **도커가 뚝딱뚝딱**해서 **컨테이너를 만들**고
+
+만든 컨테이너를 docker run을 **컨테이너라는 가상의 컴퓨터를 실행시켜주는 것**이라고 이해했다.
+
+## **진행시켜**!
+
+[도커 설치법](https://docs.docker.com/engine/install/ubuntu/)은 여기를 보자.
+
+여기 가보니 설명이 하나씩 있었다.
+
+설명대로 도커를 설치했다.
+
+내 컴퓨터에도 도커를 설치해줬다. (ubuntu, mac, window등을 찾아서 직접하자!!!)
+
+이후에 업로드할 서버와, 내 로컬 컴퓨터에 모두 docker login을 해주자. (같은 계정으로 로그인해야 한다)
+
+![](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2Fc44wsi%2FbtsBgJAVsDM%2FqlDlkPkAqxPVOKntCrz0bK%2Fimg.png)
+
+이후 sudo su 관리자 권한으로 동작들을 실행시키게 설정했다.
+
+이후, docker 에서 로그인을 요청해보자!!!
+
+![](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2FrBFWm%2FbtsBfdQhSs0%2FKEvNbSvZOxejmNHZ8kyshk%2Fimg.png)
+
+```
+docker login -u ${username}
+```
+
+의 방식으로 로그인을 진행시킬 수 있고, 이 때 아래에 password를 등록시킬 수 있다.
+
+입력해주면? **_Login Succeeded_**라는 메시지가 나온다. 즉, 로그인에 성공했다는 뜻이다
+
+(만약 실패했다면 sudo로 다시하거나, 다시 설치해보자!)
+
+서버와 업로드할 컴퓨터에서 로그인이 끝났다면, 이제 해야할 과정들이 있다.
+
+```
+sudo docker build -t ${username}/${repository name}:${tag} --platform linux/amd64 .
+// 로컬 : 도커 이미지를 만들어준다.
+
+sudo docker push ${username}/${{repository name}:${tag}
+// 로컬 : 도커 컨테이너를 이미지로 업로드(push) 한다.
+
+sudo docker pull ${username}/${repository name}:${tag}
+// 서버 : 도커 이미지를 다운로드(pull) 한다.
+
+docker run -d -p 80:8080 -e TZ=Asia/Seoul --name ${name} ${username}/${repository name}:${tag}
+// 서버 : 도커 이미지를 컨테이너로 실행시킨다.
+```
+
+각자의 과정에 대해서 간단하게 정리해보자면,
+
+- sudo docker build -t ${username}/${repo name}:${tag} --platform linux/arm64 .
+  - -t : 정확한 태그까지 명시해서 이미지를 만들어준다.
+  - --platform : 실행시킬 백그라운드 플랫폼을 명시해준다. linux 프리티어에 동작시킬 수 있는 상태가 amd64/v3라서 이런 방식으로 설정했다.
+  - . : 루트 디렉토리를 명시했다.
+- sudo docker push ${username}/${repo name}:${tag}
+  - 해당 이름으로 만들어진 이미지를 docker hub으로 푸쉬한다.
+  - 깃허브에 리포지토리로 푸쉬한 것과 동일하다
+  - 하지만, 도커는 이를 실행시킬 수 있는 독자적인 환경에 프로젝트를 둔다면, 깃허브는 프로젝트만을 올리는 방식이다.
+- sudo docker pull ${username}/${repository name}:${tag}
+  - 해당 이름의 이미지를 도커 허브에서 가져온다.
+- docker run -d -p 80:8080 -e TZ=Asia/Seoul --name ${name} ${username}/${repository name}:${tag}
+  - -d : 백그라운드에서 실행시킨다.
+  - -p 80:8080 : 포트를 설정해준다. 80포트로 외부 입력을 받으면, 내부적으로는 8080포트에 실행중인 애플리케이션에 연결해준다.
+  - -e TZ=Asia/Seoul : 환경 설정을 해준다. 타임존을 서울로 설정해준다.
+  - --name ${name} : 컨테이너를 해당 이름으로 실행시켜준다. 후에 정확한 이미지명이 아닌, 해당 name이나 기본적으로 주는 id로 접근할 수 있게 해준다.
+  - 이렇게 설정된 컨테이너를 실행시켜준다.
+
+![](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2FcTBu3o%2FbtsBeLfr3tX%2FuJO9ZvmOD2vj9QEngW5iDk%2Fimg.png)
+
+원격 서버에서 pull을 할 때, 그리고 Push를 할 때 tag가 명시되어있지 않다면,
+
+보는 것과 같이 default태그로 latest로 받아진다.
+
+이후에 실행을 시켜줄 수 있다.
+
+```
+docker run -d -p 80:8080 -e TZ=Asia/Seoul --name server teamndd/test
+```
+
+이 명령을 내려주면, 도커 이미지를 컨테이너화시켜 실행시켜준다.
+
+![](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2FcyRx4u%2FbtsBeUb9gLp%2FfnQGp3sJRxdSHk0SxDXNpK%2Fimg.png)
+
+도커에 대한 더 깊은 이야기들은 현재 나도 docker 공식문서에서 훑는 중이다.
+
+우리 모두 다같이 공부합시다
+
+그럼...twenty thousand...🔥

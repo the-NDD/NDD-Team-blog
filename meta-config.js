@@ -21,7 +21,7 @@ module.exports = {
     },
     {
       name: "JangAJang",
-      description: "I'm 이장희",
+      description: "어 그래 형이야",
       githubLink: "https://github.com/JangAJang",
     },
     {
