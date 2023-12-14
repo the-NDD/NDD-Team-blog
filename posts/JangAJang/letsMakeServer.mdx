@@ -206,7 +206,7 @@ docker run -d -p 80:8080 -e TZ=Asia/Seoul --name ${name} ${username}/${repositor
   - -d : 백그라운드에서 실행시킨다.
   - -p 80:8080 : 포트를 설정해준다. 80포트로 외부 입력을 받으면, 내부적으로는 8080포트에 실행중인 애플리케이션에 연결해준다.
   - -e TZ=Asia/Seoul : 환경 설정을 해준다. 타임존을 서울로 설정해준다.
-  - --name ${name} : 컨테이너를 해당 이름으로 실행시켜준다. 후에 정확한 이미지명이 아닌, 해당 name이나 기본적으로 주는 id로 접근할 수 있게 해준다.
+  - `--name ${name} `: 컨테이너를 해당 이름으로 실행시켜준다. 후에 정확한 이미지명이 아닌, 해당 name이나 기본적으로 주는 id로 접근할 수 있게 해준다.
   - 이렇게 설정된 컨테이너를 실행시켜준다.
 
 ![](https://img1.daumcdn.net/thumb/R1280x0/?scode=mtistory2&fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdn%2FcTBu3o%2FbtsBeLfr3tX%2FuJO9ZvmOD2vj9QEngW5iDk%2Fimg.png)
