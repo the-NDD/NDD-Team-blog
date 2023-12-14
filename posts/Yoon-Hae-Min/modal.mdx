@@ -5,6 +5,8 @@ author: Yoon-Hae-Min
 publishedAt: 2023-12-06
 ---
 
+> [이 게시글의 원본 블로그입니다.](https://yoonhaemin.com/tag/experience/react-modal/)
+
 ## 서론
 
 프로젝트가 커질수록 점점 더 많은 modal이 생겨나기 시작했습니다. 기존에 존재했던 10개 파일이 있었고 추가로 사용하는 Modal까지 넣는다면 매우 많은 modal이 프로젝트 내에 사용되고 있는 것이었죠.
@@ -50,7 +52,7 @@ const Modal = ({ children, isOpen }) => {
       <div>{children}</div>
       <div></div>
     </div>,
-    document.getElementById('root')
+    document.getElementById("root")
   );
 };
 
@@ -133,7 +135,11 @@ const App = () => {
 ```jsx
 const { isOpen, openModal, closeModal } = useModal(() => {
   return (
-    <AnswerSelectionModal workbookId={workbookId} question={question} closeModal={closeModal} />
+    <AnswerSelectionModal
+      workbookId={workbookId}
+      question={question}
+      closeModal={closeModal}
+    />
   );
 });
 ```
@@ -178,7 +184,7 @@ const useModal = (component: React.FC) => {
     setIsOpen(true);
     setModal((pre) => [...pre, { id: id, element: modalComponent }]);
     // modal을 전역상태에 추가한다
-    document.body.style.overflow = 'hidden';
+    document.body.style.overflow = "hidden";
     // modal이 open되면 배경의 스크롤을 막아야함
   }, []);
 
@@ -187,7 +193,7 @@ const useModal = (component: React.FC) => {
     setModal((pre) => pre.filter((c) => c.id !== id));
     // modal을 전역상태에서 제거한다.
 
-    if (isArrEmpty(modalElements)) document.body.style.overflow = 'unset';
+    if (isArrEmpty(modalElements)) document.body.style.overflow = "unset";
     // modal이 모두 꺼지면 배경의 스크롤이 가능해야함
   }, []);
 
@@ -204,8 +210,8 @@ useModal은 전역 상태에 해당 modal 컴포넌트들을 추가 또는 제�
 자 그러면 이제 전역 상태인 modal 컴포넌트를 랜더링 해서 modal이 root 바로 밑에서 열린다는 두 번째 고려 사항을 보겠습니다. 저는 이를 ModalProvider로 해결했는데요
 
 ```jsx
-import { modalState } from '@atoms/modal';
-import { useRecoilState } from 'recoil';
+import { modalState } from "@atoms/modal";
+import { useRecoilState } from "recoil";
 
 const ModalProvider = () => {
   const [state] = useRecoilState(modalState);
@@ -252,7 +258,7 @@ export default ModalProvider;
 
 modal을 제어하는 부분을 hook으로 모으면서 응집도를 높일 수 있고 확실한 책임을 주었는데요. 제가 이 hook을 사용하면서 가장 크게 장점으로 느낀 것은 modal의 종류가 많은 프로젝트에 유용하게 사용되었다고 생각합니다. 각각의 modal에 필요한 데이터가 많은데 modal을 등록하는 위치가 자유로우니 선택할 수 있는 선택지가 많아진 것이죠.
 
-<br/>
+<br />
 
 특히 불필요한 코드들이 줄이면서 더 이상 개발자는 modal의 상태를 지정하는 state modal의 렌더링 위치 등을 알 필요가 없어졌습니다. 그냥 modal을 잘 디자인하고 잘 동작시키기만 하는데 집중을 하면 됩니다.
 
